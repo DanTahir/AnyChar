@@ -1,0 +1,19 @@
+{
+  "apps": [
+    {
+      "name": "anychar-bot",
+      "cwd": "./bot",
+      "script": "main.py",
+      "interpreter": "python3",
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    {
+      "name": "anychar-web",
+      "cwd": "./web",
+      "script": "npm",
+      "args": "start"
+    }
+  ]
+}
