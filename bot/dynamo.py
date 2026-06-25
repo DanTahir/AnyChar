@@ -143,15 +143,10 @@ def increment_thread_count(guild_or_dm_key: str, root_message_id: int) -> int:
     key = get_thread_counter_key(guild_or_dm_key, root_message_id)
     resp = _table.update_item(
         Key=key,
-        UpdateExpression=(
-            "SET messageCount = if_not_exists(messageCount, :zero) + :one, "
-            "pk = if_not_exists(pk, :pk), sk = if_not_exists(sk, :sk)"
-        ),
+        UpdateExpression="SET messageCount = if_not_exists(messageCount, :zero) + :one",
         ExpressionAttributeValues={
             ":one": 1,
             ":zero": 0,
-            ":pk": key["pk"],
-            ":sk": key["sk"],
         },
         ReturnValues="UPDATED_NEW",
     )
