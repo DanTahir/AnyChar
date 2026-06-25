@@ -22,6 +22,18 @@ function accountSk(userId: string, provider: string, providerAccountId: string) 
   return `USERID#${userId}#ACCOUNT#${provider}#${providerAccountId}`;
 }
 
+async function getAdapterUser(id: string): Promise<AdapterUser | null> {
+  const item = await getItem("USERS", userSk(id));
+  if (!item) return null;
+  return {
+    id: item.discordId as string,
+    name: (item.name as string | null) ?? null,
+    email: (item.email as string) ?? "",
+    emailVerified: item.emailVerified ? new Date(item.emailVerified as string) : null,
+    image: (item.image as string | null) ?? null,
+  } as AdapterUser;
+}
+
 export function AnyCharAdapter(): Adapter {
   return {
     async createUser(user) {
@@ -47,28 +59,19 @@ export function AnyCharAdapter(): Adapter {
     },
 
     async getUser(id) {
-      const item = await getItem("USERS", userSk(id));
-      if (!item) return null;
-      return {
-        id: item.discordId as string,
-        name: (item.name as string | null) ?? null,
-        email: (item.email as string) ?? "",
-        emailVerified: item.emailVerified ? new Date(item.emailVerified as string) : null,
-        image: (item.image as string | null) ?? null,
-      } as AdapterUser;
+      return getAdapterUser(id);
     },
 
     async getUserByEmail(email) {
       const items = await queryGsi1(`EMAIL#${email}`);
       if (!items.length) return null;
-      return this.getUser!(items[0].discordId as string);
+      return getAdapterUser(items[0].discordId as string);
     },
 
     async getUserByAccount({ provider, providerAccountId }) {
       const items = await queryGsi1(`ACCOUNT#${provider}#${providerAccountId}`);
       if (!items.length) return null;
-      const discordId = items[0].discordId as string;
-      return this.getUser!(discordId);
+      return getAdapterUser(items[0].discordId as string);
     },
 
     async updateUser(user) {
@@ -122,7 +125,7 @@ export function AnyCharAdapter(): Adapter {
     async getSessionAndUser(sessionToken) {
       const sess = await getItem("USERS", sessionSk(sessionToken));
       if (!sess) return null;
-      const user = await this.getUser!(sess.userId as string);
+      const user = await getAdapterUser(sess.userId as string);
       if (!user) return null;
       return {
         session: {
