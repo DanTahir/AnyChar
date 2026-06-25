@@ -14,8 +14,8 @@ PLATFORM_CONTENT_POLICY = (
 REPLY_STYLE_WORDS = {
     "one-liner": 50,
     "semi-lit": 200,
-    "literate": 500,
-    "novella": 1000,
+  "literate": 250,
+  "novella": 500,
 }
 
 
