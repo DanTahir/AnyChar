@@ -9,8 +9,11 @@ from discord import app_commands
 from openai import APIError
 
 from config import SITE_URL, THREAD_MESSAGE_LIMIT, TOKEN
+from guild_nickname import sync_guild_nickname
+from discord_images import fetch_message_image_data_urls
 from dynamo import (
     find_character_by_display_name,
+    get_character,
     get_guild_config,
     get_user,
     increment_thread_count,
@@ -147,6 +150,7 @@ async def setcharacter_cmd(interaction: discord.Interaction, name: str):
     set_guild_active_character(interaction.guild.id, owner_id, slug, interaction.user.id)
 
     display = char.get("displayName") or slug
+    await sync_guild_nickname(interaction.guild, display)
     await interaction.response.send_message(
         f"Active character set to **{display}**.", ephemeral=True
     )
@@ -192,6 +196,15 @@ async def on_ready():
 @client.event
 async def on_guild_join(guild: discord.Guild):
     print(f"Joined guild {guild.id} ({guild.name})")
+    cfg = get_guild_config(guild.id)
+    if cfg:
+        owner_id = cfg.get("activeOwnerDiscordId")
+        slug = cfg.get("activeCharacterSlug")
+        if owner_id and slug:
+            char = get_character(owner_id, slug)
+            if char:
+                display = char.get("displayName") or slug
+                await sync_guild_nickname(guild, display)
     channel = guild.system_channel
     if channel:
         try:
@@ -244,6 +257,8 @@ async def generate_reply(message: discord.Message, config: RuntimeConfig) -> str
             speaker_img = fetch_image_data_url(ku["imageS3Key"], ku.get("imageContentType"))
             break
 
+    message_imgs = await fetch_message_image_data_urls(message)
+
     user_content = build_multimodal_user_content(
         text,
         config.character,
@@ -251,6 +266,7 @@ async def generate_reply(message: discord.Message, config: RuntimeConfig) -> str
         speaker_id,
         char_img,
         speaker_img,
+        message_imgs,
     )
 
     return await chat_completion(
@@ -283,6 +299,14 @@ async def on_message(message: discord.Message):
     if not config.api_key:
         await message.channel.send("Character owner has no API key configured.")
         return
+
+    if message.guild:
+        char_display = (
+            config.character.get("displayName")
+            or config.character.get("slug")
+            or "Character"
+        )
+        await sync_guild_nickname(message.guild, char_display)
 
     try:
         root = await get_thread_root(message)

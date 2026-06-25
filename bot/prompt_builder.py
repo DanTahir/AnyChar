@@ -77,6 +77,7 @@ def build_multimodal_user_content(
     speaker_id: str | int,
     character_image_url: str | None,
     speaker_image_url: str | None,
+    message_image_urls: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     content: list[dict[str, Any]] = []
 
@@ -92,6 +93,16 @@ def build_multimodal_user_content(
             }
         )
         content.append({"type": "image_url", "image_url": {"url": speaker_image_url}})
+
+    if message_image_urls:
+        for index, url in enumerate(message_image_urls, start=1):
+            label = (
+                "The speaker attached this image with their message."
+                if len(message_image_urls) == 1
+                else f"The speaker attached image {index} with their message."
+            )
+            content.append({"type": "text", "text": label})
+            content.append({"type": "image_url", "image_url": {"url": url}})
 
     content.append({"type": "text", "text": text})
     return content

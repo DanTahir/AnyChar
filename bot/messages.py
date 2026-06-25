@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import discord
 
+from discord_images import attachment_note
+
 
 async def fetch_message(
     channel: discord.abc.Messageable,
@@ -82,7 +84,9 @@ def message_body(message: discord.Message, bot_user: discord.ClientUser) -> str:
         text = message.content.strip()
     else:
         text = format_message_content(message, bot_user)
-    return text if text else "[no text content]"
+    base = text if text else "[no text content]"
+    note = attachment_note(message)
+    return base + note if note else base
 
 
 def build_thread_prompt(
@@ -111,8 +115,20 @@ def build_thread_prompt(
 
 def single_message_prompt(message: discord.Message, bot_user: discord.ClientUser) -> str:
     body = message_body(message, bot_user)
-    if body == "[no text content]":
-        nick = getattr(message.author, "display_name", str(message.author))
+    nick = getattr(message.author, "display_name", str(message.author))
+    text_only = (
+        message.content.strip()
+        if message.author == bot_user
+        else format_message_content(message, bot_user)
+    )
+    has_images = bool(attachment_note(message))
+
+    if not text_only and has_images:
+        return (
+            f"{nick} (user:{message.author.id}) sent an image. "
+            "Respond in character to what they sent."
+        )
+    if not text_only:
         return (
             f"{nick} (user:{message.author.id}) @ mentioned you with no other message. "
             "Greet them in character."

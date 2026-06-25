@@ -65,7 +65,13 @@ npm start
 
 ## Discord
 
-See the project plan for full Discord Developer Portal setup (OAuth redirects, bot invite with permissions `2147617792`, Message Content Intent).
+See the project plan for full Discord Developer Portal setup (OAuth redirects, bot invite with permissions `2416299008`, Message Content Intent).
+
+Bot invite permissions include **Change Nickname** so the bot can set its server nickname to the active character name. If the bot was invited with an older link, re-invite using the dashboard link or:
+
+```
+https://discord.com/api/oauth2/authorize?client_id=YOUR_APP_ID&permissions=2416299008&scope=bot%20applications.commands
+```
 
 ## OpenRouter
 

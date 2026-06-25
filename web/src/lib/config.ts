@@ -12,7 +12,9 @@ export const config = {
   budgetUsd: 10,
   inputCostPerM: 1,
   outputCostPerM: 3,
-  botPermissions: "2147617792",
+  // View Channels, Send Messages, Send Messages in Threads, Embed Links,
+  // Attach Files, Read Message History, Change Nickname, Use Application Commands
+  botPermissions: "2416299008",
 };
 
 export function botInviteUrl(clientId?: string): string {
