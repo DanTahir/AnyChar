@@ -223,17 +223,19 @@ async def is_reply_to_bot(message: discord.Message) -> bool:
     return parent is not None and parent.author == client.user
 
 
-async def generate_reply(message: discord.Message, config: RuntimeConfig) -> str:
+async def generate_reply(
+    message: discord.Message, config: RuntimeConfig, thread_root: discord.Message
+) -> str:
     if is_over_budget(config.owner_user):
         return budget_exceeded_message()
 
     chain = await fetch_reply_chain(message) if message.reference else []
-    chain_first = chain[0] if chain else message
     lt, st = load_memories_for_prompt(
         config.owner_discord_id,
         config.character_slug,
         config.server_id,
-        chain_first,
+        thread_root,
+        message,
     )
 
     system = build_system_prompt(config.character, config.known_users, lt, st)
@@ -317,7 +319,7 @@ async def on_message(message: discord.Message):
             return
 
         async with message.channel.typing():
-            reply = await generate_reply(message, config)
+            reply = await generate_reply(message, config, root)
 
         if reply == budget_exceeded_message():
             await message.channel.send(reply)
@@ -326,8 +328,11 @@ async def on_message(message: discord.Message):
         await send_chained_replies(message, reply, mention_author=False)
         increment_thread_count(storage_key, root.id)
 
-        chain = await fetch_reply_chain(message) if message.reference else []
-        await create_short_term_memory(config, root, chain, message, reply)
+        try:
+            chain = await fetch_reply_chain(message) if message.reference else []
+            await create_short_term_memory(config, root, chain, message, reply)
+        except Exception as e:
+            print(f"Memory creation error: {e}")
     except APIError as e:
         print(f"OpenRouter API error: {e}")
         await message.channel.send("Something went wrong calling the language model.")

@@ -98,32 +98,59 @@ def message_snowflake_time(message: discord.Message) -> int:
     return int(message.created_at.timestamp() * 1000)
 
 
+def _memory_thread_root_id(item: dict[str, Any]) -> str | None:
+    mem_root = item.get("threadRootMessageId")
+    if mem_root is not None:
+        return str(mem_root)
+    sk = item.get("sk", "")
+    if "#MEMORY#" not in sk:
+        return None
+    parts = sk.split("#MEMORY#", 1)[1].split("#")
+    return parts[1] if len(parts) >= 2 else None
+
+
+def _memory_timestamp(item: dict[str, Any]) -> int | None:
+    sk = item.get("sk", "")
+    if "#MEMORYLT#" in sk:
+        tail = sk.split("#MEMORYLT#", 1)[1]
+        return int(tail.split("#")[0]) if tail else None
+    if "#MEMORY#" in sk:
+        tail = sk.split("#MEMORY#", 1)[1]
+        return int(tail.split("#")[0]) if tail else None
+    return None
+
+
 def load_memories_for_prompt(
     owner_id: str,
     slug: str,
     server_id: str,
-    chain_first: discord.Message,
+    thread_root: discord.Message,
+    current_message: discord.Message,
 ) -> tuple[list[dict], list[dict]]:
-    first_ts = message_snowflake_time(chain_first)
+    # Include every memory created before the conversation we're answering in.
+    # The reference point is the chain root (thread_root); for a brand-new @mention
+    # that root is the message itself, so all prior memories qualify.
+    # All timestamps use the same created_at-based basis as stored memories
+    # (see root_ts = message_snowflake_time(thread_root) in create_short_term_memory).
+    first_ts = message_snowflake_time(thread_root)
+    current_root_id = str(thread_root.id)
     lt_all = query_memories(owner_id, slug, server_id, "MEMORYLT#")
     st_all = query_memories(owner_id, slug, server_id, "MEMORY#")
 
-    def before_chain(items: list[dict]) -> list[dict]:
-        eligible = []
+    def for_prompt(items: list[dict]) -> list[dict]:
+        result = []
         for item in items:
-            sk = item.get("sk", "")
-            if "#MEMORYLT#" in sk:
-                tail = sk.split("#MEMORYLT#")[1]
-            elif "#MEMORY#" in sk:
-                tail = sk.split("#MEMORY#")[1]
-            else:
+            # Skip the memory for the conversation currently in progress; its
+            # content is already provided live via the reply chain.
+            if _memory_thread_root_id(item) == current_root_id:
                 continue
-            mem_ts = int(tail.split("#")[0]) if tail else 0
-            if mem_ts < first_ts:
-                eligible.append(item)
-        return eligible
+            mem_ts = _memory_timestamp(item)
+            if mem_ts is None or mem_ts >= first_ts:
+                continue
+            result.append(item)
+        return result
 
-    return before_chain(lt_all), before_chain(st_all)
+    return for_prompt(lt_all), for_prompt(st_all)
 
 
 async def create_short_term_memory(
