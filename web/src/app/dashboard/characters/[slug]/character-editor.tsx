@@ -99,7 +99,7 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
     });
   }
 
-  if (!character) return <p className="text-zinc-500">Loading…</p>;
+  if (!character) return <p className="text-purple-400/50">Loading…</p>;
 
   return (
     <div className="max-w-2xl space-y-8">
@@ -111,17 +111,17 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
           name="displayName"
           defaultValue={character.displayName}
           maxLength={100}
-          className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2"
+          className="input-field"
         />
-        <textarea name="good" defaultValue={character.good} maxLength={500} rows={2} className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2" placeholder="Good" />
-        <textarea name="bad" defaultValue={character.bad} maxLength={500} rows={2} className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2" placeholder="Bad" />
-        <textarea name="description" defaultValue={character.description} maxLength={2000} rows={6} className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2" placeholder="Description" />
-        <select name="replyStyle" defaultValue={character.replyStyle} className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
+        <textarea name="good" defaultValue={character.good} maxLength={500} rows={2} className="input-field" placeholder="Good" />
+        <textarea name="bad" defaultValue={character.bad} maxLength={500} rows={2} className="input-field" placeholder="Bad" />
+        <textarea name="description" defaultValue={character.description} maxLength={2000} rows={6} className="input-field" placeholder="Description" />
+        <select name="replyStyle" defaultValue={character.replyStyle} className="input-field">
           {replyStyles.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
-        <button type="submit" className="rounded bg-indigo-600 px-4 py-2">Save character</button>
+        <button type="submit" className="btn-primary">Save character</button>
       </form>
 
       <section>
@@ -131,15 +131,15 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
 
       <section className="space-y-4">
         <h2 className="font-semibold">Known Users (max 5)</h2>
-        <p className="text-sm text-zinc-500">Enable Developer Mode in Discord → right-click user → Copy User ID.</p>
+        <p className="text-sm text-purple-400/50">Enable Developer Mode in Discord → right-click user → Copy User ID.</p>
         {knownUsers.map((ku) => (
-          <div key={ku.knownUserId} className="rounded border border-zinc-800 p-3 space-y-2">
-            <p className="text-sm text-zinc-400">User ID: {ku.knownUserId}</p>
+          <div key={ku.knownUserId} className="card p-3 space-y-2">
+            <p className="text-sm text-purple-300/70">User ID: {ku.knownUserId}</p>
             <textarea
               defaultValue={ku.content}
               maxLength={knownUsers.length <= 1 ? 2000 : 500}
               rows={3}
-              className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2"
+              className="input-field"
               onBlur={(e) => saveKnownUser(ku.knownUserId, e.target.value)}
             />
             <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && uploadKnownImage(ku.knownUserId, e.target.files[0])} />
@@ -153,7 +153,7 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
               placeholder="Discord user ID"
               className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-3 py-2"
             />
-            <button type="button" onClick={addKnownUser} className="rounded bg-zinc-700 px-3 py-2">Add</button>
+            <button type="button" onClick={addKnownUser} className="btn-secondary">Add</button>
           </div>
         )}
       </section>

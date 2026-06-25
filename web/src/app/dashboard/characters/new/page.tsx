@@ -45,7 +45,7 @@ export default function NewCharacterPage() {
         <TextArea label="Description" name="description" maxLength={2000} rows={6} />
         <label className="block text-sm">
           Reply style
-          <select name="replyStyle" className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
+          <select name="replyStyle" className="input-field mt-1">
             {replyStyles.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -57,7 +57,7 @@ export default function NewCharacterPage() {
         <button
           type="submit"
           disabled={loading}
-          className="rounded bg-indigo-600 px-4 py-2 hover:bg-indigo-500 disabled:opacity-50"
+          className="btn-primary disabled:opacity-50"
         >
           {loading ? "Creating…" : "Create"}
         </button>
@@ -84,7 +84,7 @@ function Field({
         name={name}
         required={required}
         maxLength={maxLength}
-        className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2"
+        className="input-field mt-1"
       />
     </label>
   );
@@ -108,7 +108,7 @@ function TextArea({
         name={name}
         maxLength={maxLength}
         rows={rows}
-        className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2"
+        className="input-field mt-1"
       />
     </label>
   );

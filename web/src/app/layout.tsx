@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { ReactNode } from "react";
 
 import { auth, signIn, signOut } from "@/lib/auth";
@@ -8,30 +9,59 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
   return (
     <html lang="en">
-      <body className="min-h-screen bg-zinc-950 text-zinc-100 antialiased">
-        <header className="border-b border-zinc-800 px-6 py-4">
-          <div className="mx-auto flex max-w-5xl items-center justify-between">
-            <Link href="/" className="text-lg font-semibold">
-              AnyChar
+      <body className="min-h-screen text-purple-50 antialiased">
+        <header className="border-b border-purple-900/40 bg-[#0a0612]/80 backdrop-blur-md">
+          <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+            <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-purple-600 text-sm font-bold shadow-lg shadow-purple-900/50">
+                A
+              </span>
+              <span className="bg-gradient-to-r from-purple-200 to-purple-400 bg-clip-text text-transparent">
+                AnyChar
+              </span>
             </Link>
             <nav className="flex items-center gap-4 text-sm">
               {session?.user ? (
                 <>
+                  <div className="hidden items-center gap-2 sm:flex">
+                    {session.user.image && (
+                      <Image
+                        src={session.user.image}
+                        alt=""
+                        width={28}
+                        height={28}
+                        className="rounded-full ring-2 ring-purple-600/50"
+                      />
+                    )}
+                    <span className="text-purple-200">
+                      {session.user.name ?? "Signed in"}
+                    </span>
+                  </div>
                   {session.user.approved && (
                     <>
-                      <Link href="/dashboard">Dashboard</Link>
-                      <Link href="/dashboard/servers">Servers</Link>
-                      <Link href="/dashboard/dm">DM</Link>
+                      <Link href="/dashboard" className="link-accent">
+                        Dashboard
+                      </Link>
+                      <Link href="/dashboard/servers" className="link-accent">
+                        Servers
+                      </Link>
+                      <Link href="/dashboard/dm" className="link-accent">
+                        DM
+                      </Link>
                     </>
                   )}
-                  {session.user.admin && <Link href="/admin">Admin</Link>}
+                  {session.user.admin && (
+                    <Link href="/admin" className="link-accent">
+                      Admin
+                    </Link>
+                  )}
                   <form
                     action={async () => {
                       "use server";
                       await signOut();
                     }}
                   >
-                    <button type="submit" className="text-zinc-400 hover:text-white">
+                    <button type="submit" className="btn-secondary">
                       Sign out
                     </button>
                   </form>
@@ -43,10 +73,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                     await signIn("discord");
                   }}
                 >
-                  <button
-                    type="submit"
-                    className="rounded bg-indigo-600 px-3 py-1.5 font-medium hover:bg-indigo-500"
-                  >
+                  <button type="submit" className="btn-primary px-4 py-2 text-sm">
                     Login with Discord
                   </button>
                 </form>
@@ -54,7 +81,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             </nav>
           </div>
         </header>
-        <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
+        <main className="mx-auto max-w-5xl px-6 py-10">{children}</main>
       </body>
     </html>
   );

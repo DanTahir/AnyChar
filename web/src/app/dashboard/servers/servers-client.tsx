@@ -54,18 +54,18 @@ export default function ServersClient({
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Servers</h1>
-      <p className="text-sm text-zinc-400">
-        <a href={botInviteUrl()} className="text-indigo-400 underline">
+      <p className="text-sm text-purple-300/70">
+        <a href={botInviteUrl()} className="link-accent">
           Invite bot to Discord
         </a>
       </p>
-      {msg && <p className="text-sm text-zinc-400">{msg}</p>}
+      {msg && <p className="text-sm text-purple-300/70">{msg}</p>}
       <ul className="space-y-4">
         {guilds.map((g) => (
-          <li key={g.id} className="rounded border border-zinc-800 p-4">
+          <li key={g.id} className="card p-4">
             <div className="flex items-center justify-between">
               <span>{g.name}</span>
-              <button onClick={() => linkGuild(g.id)} className="text-sm text-indigo-400">
+              <button onClick={() => linkGuild(g.id)} className="link-accent text-sm">
                 {linkedGuilds.includes(g.id) ? "Linked" : "Link to account"}
               </button>
             </div>
@@ -79,7 +79,7 @@ export default function ServersClient({
                       <span>{c.displayName}</span>
                       <button
                         onClick={() => setActive(g.id, ownerId, c.slug as string)}
-                        className="text-indigo-400"
+                        className="link-accent"
                       >
                         Set active
                       </button>

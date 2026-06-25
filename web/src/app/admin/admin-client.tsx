@@ -30,16 +30,16 @@ export default function AdminPage({ pending }: { pending: { discordId: string; n
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Admin</h1>
-      {msg && <p className="text-sm text-zinc-400">{msg}</p>}
+      {msg && <p className="text-sm text-purple-300/70">{msg}</p>}
       <p className="text-sm">
         Bot invite:{" "}
-        <a href={botInviteUrl()} className="text-indigo-400 underline">
+        <a href={botInviteUrl()} className="link-accent">
           {botInviteUrl()}
         </a>
       </p>
-      <table className="w-full text-left text-sm">
+      <table className="card w-full overflow-hidden text-left text-sm">
         <thead>
-          <tr className="border-b border-zinc-800 text-zinc-400">
+          <tr className="border-b border-purple-900/40 text-purple-300/70">
             <th className="py-2">User</th>
             <th className="py-2">Discord ID</th>
             <th className="py-2">Actions</th>
@@ -47,7 +47,7 @@ export default function AdminPage({ pending }: { pending: { discordId: string; n
         </thead>
         <tbody>
           {pending.map((u) => (
-            <tr key={u.discordId} className="border-b border-zinc-900">
+            <tr key={u.discordId} className="border-b border-purple-900/30">
               <td className="py-2">{u.name ?? u.email ?? "—"}</td>
               <td className="py-2 font-mono">{u.discordId}</td>
               <td className="py-2 space-x-2">
