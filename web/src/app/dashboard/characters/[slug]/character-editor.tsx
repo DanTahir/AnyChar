@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { replyStyles } from "@/lib/schemas/character";
 
@@ -21,18 +21,32 @@ type Character = {
   imageS3Key?: string;
 };
 
+function UpdatedToast({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+  return (
+    <div
+      className="fixed bottom-6 right-6 z-50 rounded-lg border border-purple-700/50 bg-[#140d24] px-4 py-2 text-sm font-medium text-green-400 shadow-lg shadow-purple-900/40"
+      role="status"
+    >
+      Updated
+    </div>
+  );
+}
+
 function ImageUploadField({
   label,
   help,
   previewUrl,
   hasImage,
   onUpload,
+  onSaved,
 }: {
   label: string;
   help: string;
   previewUrl: string;
   hasImage: boolean;
   onUpload: (file: File) => Promise<string | null>;
+  onSaved?: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
@@ -49,6 +63,7 @@ function ImageUploadField({
     }
     setCacheKey((k) => k + 1);
     setMessage("Image saved.");
+    onSaved?.();
   }
 
   return (
@@ -97,6 +112,20 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
   const [knownUsers, setKnownUsers] = useState<KnownUser[]>([]);
   const [error, setError] = useState("");
   const [ownerId, setOwnerId] = useState("");
+  const [showUpdated, setShowUpdated] = useState(false);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flashUpdated = useCallback(() => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setShowUpdated(true);
+    toastTimer.current = setTimeout(() => setShowUpdated(false), 2000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     fetch(`/api/characters/${slug}`)
@@ -113,22 +142,26 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
       });
   }, [slug]);
 
-  async function saveCharacter(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
+  async function saveCharacterFields(fields: Partial<Character>) {
     const res = await fetch(`/api/characters/${slug}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        displayName: form.get("displayName"),
-        good: form.get("good"),
-        bad: form.get("bad"),
-        description: form.get("description"),
-        replyStyle: form.get("replyStyle"),
+        displayName: fields.displayName ?? character?.displayName,
+        good: fields.good ?? character?.good ?? "",
+        bad: fields.bad ?? character?.bad ?? "",
+        description: fields.description ?? character?.description ?? "",
+        replyStyle: fields.replyStyle ?? character?.replyStyle ?? "semi-lit",
       }),
     });
-    if (!res.ok) setError((await res.json()).error);
-    else setError("");
+    if (!res.ok) {
+      setError((await res.json()).error ?? "Save failed");
+      return false;
+    }
+    setError("");
+    setCharacter((c) => (c ? { ...c, ...fields } : c));
+    flashUpdated();
+    return true;
   }
 
   async function uploadCharacterImage(file: File): Promise<string | null> {
@@ -142,14 +175,19 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
   }
 
   async function saveKnownUser(knownUserId: string, content: string) {
-    await fetch(`/api/characters/${slug}/known/${knownUserId}`, {
+    const res = await fetch(`/api/characters/${slug}/known/${knownUserId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ discordUserId: knownUserId, content }),
     });
+    if (!res.ok) {
+      setError((await res.json()).error ?? "Save failed");
+      return;
+    }
     setKnownUsers((prev) =>
       prev.map((k) => (k.knownUserId === knownUserId ? { ...k, content } : k)),
     );
+    flashUpdated();
   }
 
   async function addKnownUser() {
@@ -157,13 +195,18 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
       setError("Enter a numeric Discord user ID");
       return;
     }
-    await fetch(`/api/characters/${slug}/known/${ownerId}`, {
+    const res = await fetch(`/api/characters/${slug}/known/${ownerId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ discordUserId: ownerId, content: "" }),
     });
+    if (!res.ok) {
+      setError((await res.json()).error ?? "Failed to add");
+      return;
+    }
     setKnownUsers((prev) => [...prev, { knownUserId: ownerId, content: "" }]);
     setOwnerId("");
+    flashUpdated();
   }
 
   async function uploadKnownImage(knownUserId: string, file: File): Promise<string | null> {
@@ -187,26 +230,71 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
 
   return (
     <div className="max-w-2xl space-y-8">
-      <h1 className="text-2xl font-bold">Edit {character.displayName}</h1>
+      <UpdatedToast visible={showUpdated} />
+      <div>
+        <h1 className="text-2xl font-bold">Edit {character.displayName}</h1>
+        <p className="mt-1 text-sm text-purple-300/70">Changes save automatically.</p>
+      </div>
       {error && <p className="text-red-400">{error}</p>}
 
-      <form onSubmit={saveCharacter} className="space-y-4">
+      <div className="space-y-4">
         <input
-          name="displayName"
           defaultValue={character.displayName}
           maxLength={100}
           className="input-field"
+          placeholder="Display name"
+          onBlur={(e) => {
+            if (e.target.value !== character.displayName) {
+              void saveCharacterFields({ displayName: e.target.value });
+            }
+          }}
         />
-        <textarea name="good" defaultValue={character.good} maxLength={500} rows={2} className="input-field" placeholder="Good" />
-        <textarea name="bad" defaultValue={character.bad} maxLength={500} rows={2} className="input-field" placeholder="Bad" />
-        <textarea name="description" defaultValue={character.description} maxLength={2000} rows={6} className="input-field" placeholder="Description" />
-        <select name="replyStyle" defaultValue={character.replyStyle} className="input-field">
+        <textarea
+          defaultValue={character.good}
+          maxLength={500}
+          rows={2}
+          className="input-field"
+          placeholder="Good"
+          onBlur={(e) => {
+            if (e.target.value !== (character.good ?? "")) {
+              void saveCharacterFields({ good: e.target.value });
+            }
+          }}
+        />
+        <textarea
+          defaultValue={character.bad}
+          maxLength={500}
+          rows={2}
+          className="input-field"
+          placeholder="Bad"
+          onBlur={(e) => {
+            if (e.target.value !== (character.bad ?? "")) {
+              void saveCharacterFields({ bad: e.target.value });
+            }
+          }}
+        />
+        <textarea
+          defaultValue={character.description}
+          maxLength={2000}
+          rows={6}
+          className="input-field"
+          placeholder="Description"
+          onBlur={(e) => {
+            if (e.target.value !== (character.description ?? "")) {
+              void saveCharacterFields({ description: e.target.value });
+            }
+          }}
+        />
+        <select
+          defaultValue={character.replyStyle}
+          className="input-field"
+          onChange={(e) => void saveCharacterFields({ replyStyle: e.target.value })}
+        >
           {replyStyles.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
-        <button type="submit" className="btn-primary">Save character</button>
-      </form>
+      </div>
 
       <ImageUploadField
         label="Character appearance"
@@ -214,6 +302,7 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
         previewUrl={`/api/characters/${slug}/image`}
         hasImage={Boolean(character.imageS3Key)}
         onUpload={uploadCharacterImage}
+        onSaved={flashUpdated}
       />
 
       <section className="space-y-4">
@@ -232,7 +321,11 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
               maxLength={knownUsers.length <= 1 ? 2000 : 500}
               rows={3}
               className="input-field"
-              onBlur={(e) => saveKnownUser(ku.knownUserId, e.target.value)}
+              onBlur={(e) => {
+                if (e.target.value !== ku.content) {
+                  void saveKnownUser(ku.knownUserId, e.target.value);
+                }
+              }}
             />
             <ImageUploadField
               label="Known user appearance"
@@ -240,6 +333,7 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
               previewUrl={`/api/characters/${slug}/known/${ku.knownUserId}/image`}
               hasImage={Boolean(ku.imageS3Key)}
               onUpload={(file) => uploadKnownImage(ku.knownUserId, file)}
+              onSaved={flashUpdated}
             />
           </div>
         ))}
