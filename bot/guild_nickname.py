@@ -16,8 +16,19 @@ def current_nick(member: discord.Member) -> str:
     return member.nick or member.display_name
 
 
-async def sync_guild_nickname(guild: discord.Guild, display_name: str) -> None:
+async def sync_guild_nickname(
+    guild: discord.Guild,
+    display_name: str,
+    *,
+    bot_id: int | None = None,
+) -> None:
     me = guild.me
+    if me is None and bot_id is not None:
+        try:
+            me = await guild.fetch_member(bot_id)
+        except discord.HTTPException as exc:
+            print(f"Could not fetch bot member in guild {guild.id}: {exc}")
+            return
     if me is None:
         return
 

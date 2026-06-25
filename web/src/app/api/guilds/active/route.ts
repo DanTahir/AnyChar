@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
+import { syncBotGuildNickname } from "@/lib/discord-bot";
 import { getCharacter, linkGuild, requireApproved, setActiveGuildCharacter } from "@/lib/users";
 
 export async function POST(req: Request) {
@@ -19,6 +20,8 @@ export async function POST(req: Request) {
     if (!char) return NextResponse.json({ error: "Character not found" }, { status: 404 });
     await linkGuild(s.user.id, guildId);
     await setActiveGuildCharacter(guildId, ownerId, slug, s.user.id);
+    const displayName = (char.displayName as string) || slug;
+    await syncBotGuildNickname(guildId, displayName);
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";

@@ -150,7 +150,7 @@ async def setcharacter_cmd(interaction: discord.Interaction, name: str):
     set_guild_active_character(interaction.guild.id, owner_id, slug, interaction.user.id)
 
     display = char.get("displayName") or slug
-    await sync_guild_nickname(interaction.guild, display)
+    await sync_guild_nickname(interaction.guild, display, bot_id=client.user.id)
     await interaction.response.send_message(
         f"Active character set to **{display}**.", ephemeral=True
     )
@@ -204,7 +204,7 @@ async def on_guild_join(guild: discord.Guild):
             char = get_character(owner_id, slug)
             if char:
                 display = char.get("displayName") or slug
-                await sync_guild_nickname(guild, display)
+                await sync_guild_nickname(guild, display, bot_id=client.user.id)
     channel = guild.system_channel
     if channel:
         try:
@@ -306,7 +306,7 @@ async def on_message(message: discord.Message):
             or config.character.get("slug")
             or "Character"
         )
-        await sync_guild_nickname(message.guild, char_display)
+        await sync_guild_nickname(message.guild, char_display, bot_id=client.user.id)
 
     try:
         root = await get_thread_root(message)
