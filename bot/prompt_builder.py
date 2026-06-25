@@ -13,7 +13,7 @@ PLATFORM_CONTENT_POLICY = (
 
 REPLY_STYLE_WORDS = {
     "one-liner": 50,
-    "semi-lit": 200,
+    "semi-lit": 150,
   "literate": 250,
   "novella": 500,
 }
@@ -60,7 +60,7 @@ def build_system_prompt(
     parts.append(f"\nPlatform content policy: {PLATFORM_CONTENT_POLICY}")
 
     style = character.get("replyStyle") or "semi-lit"
-    words = REPLY_STYLE_WORDS.get(style, 200)
+    words = REPLY_STYLE_WORDS.get(style, 150)
     parts.append(f"\nReply length: approximately {words} words ({style}).")
 
     parts.append(

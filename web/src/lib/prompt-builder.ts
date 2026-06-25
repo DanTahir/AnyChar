@@ -8,7 +8,7 @@ export const PLATFORM_CONTENT_POLICY =
 
 export const REPLY_STYLE_WORDS: Record<string, number> = {
   "one-liner": 50,
-  "semi-lit": 200,
+  "semi-lit": 150,
   literate: 250,
   novella: 500,
 };
