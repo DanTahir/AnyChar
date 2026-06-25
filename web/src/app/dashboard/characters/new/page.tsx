@@ -54,6 +54,10 @@ export default function NewCharacterPage() {
           </select>
         </label>
         {error && <p className="text-sm text-red-400">{error}</p>}
+        <p className="text-sm text-purple-300/70">
+          After creating your character, you can upload a portrait and known-user images on the
+          edit page.
+        </p>
         <button
           type="submit"
           disabled={loading}

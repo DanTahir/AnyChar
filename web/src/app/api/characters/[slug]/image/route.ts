@@ -5,12 +5,35 @@ import { charSk, updateItem } from "@/lib/dynamo";
 import {
   characterImageKey,
   extForType,
+  fetchImage,
   uploadImage,
   validateImage,
 } from "@/lib/s3";
 import { getCharacter, requireApproved } from "@/lib/users";
 
 type Params = { params: Promise<{ slug: string }> };
+
+export async function GET(_req: Request, { params }: Params) {
+  try {
+    const session = await auth();
+    const { session: s } = await requireApproved(session);
+    const { slug } = await params;
+    const char = await getCharacter(s.user.id, slug);
+    if (!char?.imageS3Key) {
+      return NextResponse.json({ error: "No image" }, { status: 404 });
+    }
+    const image = await fetchImage(char.imageS3Key as string);
+    if (!image) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return new NextResponse(image.body, {
+      headers: {
+        "Content-Type": image.contentType,
+        "Cache-Control": "private, max-age=3600",
+      },
+    });
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+}
 
 export async function POST(req: Request, { params }: Params) {
   try {

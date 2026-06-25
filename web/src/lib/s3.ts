@@ -1,5 +1,6 @@
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -57,6 +58,19 @@ export async function deleteImage(key: string) {
   await s3.send(
     new DeleteObjectCommand({ Bucket: config.s3Bucket, Key: key }),
   );
+}
+
+export async function fetchImage(key: string) {
+  if (!config.s3Bucket || !key) return null;
+  const resp = await s3.send(
+    new GetObjectCommand({ Bucket: config.s3Bucket, Key: key }),
+  );
+  if (!resp.Body) return null;
+  const bytes = await resp.Body.transformToByteArray();
+  return {
+    body: Buffer.from(bytes),
+    contentType: (resp.ContentType as string | undefined) ?? "image/jpeg",
+  };
 }
 
 export function characterImageKey(ownerId: string, slug: string, ext: string) {
