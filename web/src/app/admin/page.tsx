@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import AdminClient from "./admin-client";
 import { auth } from "@/lib/auth";
-import { listPendingUsers } from "@/lib/users";
+import { listApprovedUsers, listPendingUsers } from "@/lib/users";
 
 import { botInviteUrl } from "@/lib/config";
 
@@ -16,5 +16,13 @@ export default async function AdminPage() {
     email: u.email as string | undefined,
   }));
 
-  return <AdminClient pending={pending} botInviteUrl={botInviteUrl()} />;
+  const approved = (await listApprovedUsers()).map((u) => ({
+    discordId: String(u.discordId ?? u.sk?.toString().replace("USERID#", "")),
+    name: u.name as string | undefined,
+    email: u.email as string | undefined,
+  }));
+
+  return (
+    <AdminClient pending={pending} approved={approved} botInviteUrl={botInviteUrl()} />
+  );
 }
