@@ -43,7 +43,15 @@ export default async function DashboardPage() {
           </Link>
         </div>
         {characters.length === 0 ? (
-          <p className="text-purple-400/50">No characters yet.</p>
+          <div className="card p-8 text-center">
+            <p className="text-purple-300/70">No characters yet.</p>
+            <Link
+              href="/dashboard/characters/new"
+              className="btn-primary mt-4 inline-block text-sm"
+            >
+              Create your first character
+            </Link>
+          </div>
         ) : (
           <ul className="card divide-y divide-purple-900/40">
             {characters.map((c) => (

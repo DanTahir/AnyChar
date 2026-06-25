@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 
 import { auth, signIn, signOut } from "@/lib/auth";
 
+import "./globals.css";
+
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const session = await auth();
 
@@ -41,6 +43,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                     <>
                       <Link href="/dashboard" className="link-accent">
                         Dashboard
+                      </Link>
+                      <Link href="/dashboard/characters/new" className="link-accent">
+                        New character
                       </Link>
                       <Link href="/dashboard/servers" className="link-accent">
                         Servers
