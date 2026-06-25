@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-import { botInviteUrl } from "@/lib/config";
-
 type Guild = { id: string; name: string; owner: boolean; permissions: string };
 
 type PoolChar = {
@@ -16,9 +14,11 @@ type PoolChar = {
 export default function ServersClient({
   guilds,
   linkedGuilds,
+  botInviteUrl,
 }: {
   guilds: Guild[];
   linkedGuilds: string[];
+  botInviteUrl: string;
 }) {
   const [pool, setPool] = useState<Record<string, PoolChar[]>>({});
   const [msg, setMsg] = useState("");
@@ -55,7 +55,7 @@ export default function ServersClient({
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Servers</h1>
       <p className="text-sm text-purple-300/70">
-        <a href={botInviteUrl()} className="link-accent">
+        <a href={botInviteUrl} className="link-accent">
           Invite bot to Discord
         </a>
       </p>

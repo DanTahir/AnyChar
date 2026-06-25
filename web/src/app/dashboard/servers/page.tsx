@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import ServersClient from "./servers-client";
 import { auth } from "@/lib/auth";
+import { botInviteUrl } from "@/lib/config";
 import { queryPkSk } from "@/lib/dynamo";
 import { listLinkedGuilds } from "@/lib/users";
 
@@ -35,5 +36,11 @@ export default async function ServersPage() {
     guilds = await fetchGuilds(discordAccount.access_token as string);
   }
 
-  return <ServersClient guilds={guilds} linkedGuilds={linked} />;
+  return (
+    <ServersClient
+      guilds={guilds}
+      linkedGuilds={linked}
+      botInviteUrl={botInviteUrl()}
+    />
+  );
 }

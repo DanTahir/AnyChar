@@ -2,9 +2,13 @@
 
 import { useState } from "react";
 
-import { botInviteUrl } from "@/lib/config";
-
-export default function AdminPage({ pending }: { pending: { discordId: string; name?: string; email?: string }[] }) {
+export default function AdminClient({
+  pending,
+  botInviteUrl,
+}: {
+  pending: { discordId: string; name?: string; email?: string }[];
+  botInviteUrl: string;
+}) {
   const [msg, setMsg] = useState("");
 
   async function approve(discordId: string) {
@@ -33,8 +37,8 @@ export default function AdminPage({ pending }: { pending: { discordId: string; n
       {msg && <p className="text-sm text-purple-300/70">{msg}</p>}
       <p className="text-sm">
         Bot invite:{" "}
-        <a href={botInviteUrl()} className="link-accent">
-          {botInviteUrl()}
+        <a href={botInviteUrl} className="link-accent">
+          {botInviteUrl}
         </a>
       </p>
       <table className="card w-full overflow-hidden text-left text-sm">

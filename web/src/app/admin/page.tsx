@@ -4,6 +4,8 @@ import AdminClient from "./admin-client";
 import { auth } from "@/lib/auth";
 import { listPendingUsers } from "@/lib/users";
 
+import { botInviteUrl } from "@/lib/config";
+
 export default async function AdminPage() {
   const session = await auth();
   if (!session?.user?.admin) redirect("/");
@@ -14,5 +16,5 @@ export default async function AdminPage() {
     email: u.email as string | undefined,
   }));
 
-  return <AdminClient pending={pending} />;
+  return <AdminClient pending={pending} botInviteUrl={botInviteUrl()} />;
 }

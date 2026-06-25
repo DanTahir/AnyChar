@@ -1,7 +1,8 @@
 export const config = {
   authSecret: process.env.AUTH_SECRET ?? "",
   authUrl: process.env.AUTH_URL ?? "http://localhost:3000",
-  discordClientId: process.env.AUTH_DISCORD_ID ?? "",
+  discordClientId:
+    process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID ?? process.env.AUTH_DISCORD_ID ?? "",
   discordClientSecret: process.env.AUTH_DISCORD_SECRET ?? "",
   discordBotToken: process.env.DISCORD_BOT_TOKEN ?? "",
   awsRegion: process.env.AWS_REGION ?? "us-east-1",
