@@ -31,7 +31,12 @@ def get_user_api_key(discord_id: str | int) -> str:
     if not user:
         return ""
     enc = user.get("openRouterApiKey") or ""
-    return decrypt_api_key(enc) if enc else ""
+    if not enc:
+        return ""
+    try:
+        return decrypt_api_key(enc)
+    except Exception:
+        return ""
 
 
 def get_guild_config(guild_id: str | int) -> dict[str, Any] | None:

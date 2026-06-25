@@ -20,14 +20,37 @@ def decrypt_api_key(stored: str) -> str:
         return ""
     if not stored.startswith("enc:"):
         return stored
-    raw = base64.b64decode(stored[4:])
-    nonce, ciphertext = raw[:12], raw[12:]
-    return AESGCM(_key()).decrypt(nonce, ciphertext, None).decode()
+    try:
+        raw = base64.b64decode(stored[4:])
+    except Exception:
+        return ""
+    if len(raw) < 28:
+        return ""
+
+    nonce = raw[:12]
+    aes = AESGCM(_key())
+
+    # Web (Node) format: iv + authTag + ciphertext
+    tag = raw[12:28]
+    ciphertext = raw[28:]
+    if ciphertext:
+        try:
+            return aes.decrypt(nonce, ciphertext + tag, None).decode()
+        except Exception:
+            pass
+
+    # Legacy Python format: nonce + (ciphertext + tag)
+    try:
+        return aes.decrypt(nonce, raw[12:], None).decode()
+    except Exception:
+        return ""
 
 
 def encrypt_api_key(plain: str) -> str:
     if not plain:
         return ""
     nonce = os.urandom(12)
-    ciphertext = AESGCM(_key()).encrypt(nonce, plain.encode(), None)
-    return "enc:" + base64.b64encode(nonce + ciphertext).decode()
+    encrypted = AESGCM(_key()).encrypt(nonce, plain.encode(), None)
+    tag = encrypted[-16:]
+    ciphertext = encrypted[:-16]
+    return "enc:" + base64.b64encode(nonce + tag + ciphertext).decode()
