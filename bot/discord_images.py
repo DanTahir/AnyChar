@@ -52,6 +52,20 @@ async def fetch_message_image_data_urls(message: discord.Message) -> list[str]:
     return urls
 
 
+async def fetch_images_from_messages(
+    messages: list[discord.Message], cap: int = MAX_ATTACHMENTS
+) -> list[str]:
+    urls: list[str] = []
+    for message in messages:
+        for attachment in message.attachments:
+            if len(urls) >= cap:
+                return urls
+            data_url = await attachment_to_data_url(attachment)
+            if data_url:
+                urls.append(data_url)
+    return urls
+
+
 def attachment_note(message: discord.Message) -> str:
     count = sum(1 for a in message.attachments if _is_image_attachment(a))
     if count == 0:

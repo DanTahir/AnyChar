@@ -10,7 +10,7 @@ from openai import APIError
 
 from config import SITE_URL, THREAD_MESSAGE_LIMIT, TOKEN
 from guild_nickname import sync_guild_nickname
-from discord_images import fetch_message_image_data_urls
+from discord_images import fetch_images_from_messages, fetch_message_image_data_urls
 from dynamo import (
     find_character_by_display_name,
     get_character,
@@ -260,6 +260,11 @@ async def generate_reply(
             break
 
     message_imgs = await fetch_message_image_data_urls(message)
+    # Images posted in the messages being replied to (closest reply first) so the
+    # character can actually see an image when asked about it in a reply.
+    context_imgs = (
+        await fetch_images_from_messages(list(reversed(chain))) if chain else []
+    )
 
     user_content = build_multimodal_user_content(
         text,
@@ -269,6 +274,7 @@ async def generate_reply(
         char_img,
         speaker_img,
         message_imgs,
+        context_imgs,
     )
 
     return await chat_completion(
