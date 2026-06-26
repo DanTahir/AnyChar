@@ -367,3 +367,6 @@ bot/**/__marimo__/
 bot/.streamlit/secrets.toml
 
 *.pem
+
+# Deploy script contains live secrets/tokens — never commit
+infra/deploy-ec2.sh
