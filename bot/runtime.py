@@ -280,10 +280,10 @@ async def maybe_compact_short_term(config: RuntimeConfig) -> None:
     server_id = config.server_id
     items = query_memories(owner_id, slug, server_id, "MEMORY#")
     total = sum(int(i.get("tokenEstimate") or 0) for i in items)
-    if total <= 8000:
+    if total <= 10000:
         return
 
-    keep_tokens = 4000
+    keep_tokens = 5000
     kept_count = 0
     to_summarize: list[dict] = []
     for item in reversed(items):

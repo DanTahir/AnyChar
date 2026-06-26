@@ -37,10 +37,6 @@ REPLY_STYLE_WORDS = {
     "novella": 500,
 }
 
-# Cap how many short-term memories get injected so a long or repetitive run of
-# memories can never dominate the prompt and drown out the live conversation.
-MAX_SHORT_TERM_IN_PROMPT = 25
-
 ANTI_REPETITION_RULE = (
     "Move the scene forward with every reply. Never repeat the same request, command, "
     "demand, or line that you — or your memories — already used; if you notice yourself "
@@ -58,11 +54,6 @@ def build_system_prompt(
     has_live_conversation: bool = False,
 ) -> str:
     parts: list[str] = []
-
-    # Only ever show the most recent short-term memories. Older ones are either
-    # compacted into long-term memory or are stale context.
-    if len(short_term_memories) > MAX_SHORT_TERM_IN_PROMPT:
-        short_term_memories = short_term_memories[-MAX_SHORT_TERM_IN_PROMPT:]
 
     if long_term_memories or short_term_memories:
         if has_live_conversation:
