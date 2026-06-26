@@ -31,7 +31,7 @@ export default async function DashboardPage() {
           {user?.usageOutputTokens ?? 0}
         </p>
         <p className="text-sm text-purple-300/70">
-          Estimated cost: ${cost.toFixed(4)} / $10.00 cap
+          Estimated cost: ${cost.toFixed(4)} / ${(user?.budgetUsd ?? 10).toFixed(2)} cap
         </p>
       </section>
 

@@ -4,7 +4,7 @@ import AdminClient from "./admin-client";
 import { auth } from "@/lib/auth";
 import { listApprovedUsers, listPendingUsers } from "@/lib/users";
 
-import { botInviteUrl, estimateCostUsd } from "@/lib/config";
+import { botInviteUrl, config, estimateCostUsd } from "@/lib/config";
 
 export default async function AdminPage() {
   const session = await auth();
@@ -26,6 +26,7 @@ export default async function AdminPage() {
       inputTokens,
       outputTokens,
       costUsd: estimateCostUsd(inputTokens, outputTokens),
+      budgetUsd: Number(u.budgetUsd ?? config.budgetUsd),
     };
   });
 

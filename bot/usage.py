@@ -20,10 +20,20 @@ def user_estimated_cost(user: dict) -> float:
     return estimate_cost_usd(inp, out)
 
 
+def user_budget_usd(user: dict) -> float:
+    raw = user.get("budgetUsd")
+    if raw is None:
+        return BUDGET_USD
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return BUDGET_USD
+
+
 def is_over_budget(user: dict | None) -> bool:
     if not user:
         return True
-    return user_estimated_cost(user) >= BUDGET_USD
+    return user_estimated_cost(user) >= user_budget_usd(user)
 
 
 def budget_exceeded_message() -> str:

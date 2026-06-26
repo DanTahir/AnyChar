@@ -9,6 +9,7 @@ type AdminUser = {
   inputTokens?: number;
   outputTokens?: number;
   costUsd?: number;
+  budgetUsd?: number;
 };
 
 const numberFmt = new Intl.NumberFormat("en-US");
@@ -20,6 +21,7 @@ function UserTable({
   actionClass,
   onAction,
   showUsage = false,
+  onRaiseBudget,
 }: {
   users: AdminUser[];
   emptyMessage: string;
@@ -27,6 +29,7 @@ function UserTable({
   actionClass: string;
   onAction: (discordId: string) => void;
   showUsage?: boolean;
+  onRaiseBudget?: (discordId: string) => void;
 }) {
   if (users.length === 0) {
     return <p className="text-sm text-purple-400/50">{emptyMessage}</p>;
@@ -39,6 +42,7 @@ function UserTable({
           <th className="px-4 py-2">User</th>
           <th className="px-4 py-2">Discord ID</th>
           {showUsage && <th className="px-4 py-2">Token spending</th>}
+          {showUsage && <th className="px-4 py-2">Max budget</th>}
           <th className="px-4 py-2">Actions</th>
         </tr>
       </thead>
@@ -58,6 +62,24 @@ function UserTable({
                     {numberFmt.format(u.inputTokens ?? 0)} in ·{" "}
                     {numberFmt.format(u.outputTokens ?? 0)} out · ~$
                     {(u.costUsd ?? 0).toFixed(4)}
+                  </div>
+                </td>
+              )}
+              {showUsage && (
+                <td className="px-4 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-purple-100">
+                      ${(u.budgetUsd ?? 0).toFixed(2)}
+                    </span>
+                    {onRaiseBudget && (
+                      <button
+                        type="button"
+                        onClick={() => onRaiseBudget(u.discordId)}
+                        className="rounded border border-purple-700/50 px-2 py-0.5 text-xs text-purple-200 hover:bg-purple-800/40"
+                      >
+                        + $10
+                      </button>
+                    )}
                   </div>
                 </td>
               )}
@@ -105,6 +127,16 @@ export default function AdminClient({
     if (res.ok) window.location.reload();
   }
 
+  async function raiseBudget(discordId: string) {
+    const res = await fetch("/api/admin/raise-budget", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ discordId }),
+    });
+    setMsg(res.ok ? "Budget raised by $10" : (await res.json()).error);
+    if (res.ok) window.location.reload();
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -142,6 +174,7 @@ export default function AdminClient({
           actionClass="text-red-400 hover:text-red-300"
           onAction={unapprove}
           showUsage
+          onRaiseBudget={raiseBudget}
         />
       </section>
     </div>

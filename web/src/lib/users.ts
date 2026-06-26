@@ -1,5 +1,6 @@
 import type { Session } from "next-auth";
 
+import { config } from "./config";
 import {
   charSk,
   deleteItem,
@@ -8,6 +9,7 @@ import {
   putItem,
   queryGsi1,
   queryPkSk,
+  updateItem,
   userSk,
 } from "./dynamo";
 import { knownUserMaxLength, slugify } from "./schemas/character";
@@ -18,6 +20,7 @@ export type AppUser = {
   admin: boolean;
   usageInputTokens: number;
   usageOutputTokens: number;
+  budgetUsd: number;
 };
 
 export async function getAppUser(discordId: string): Promise<AppUser | null> {
@@ -29,7 +32,17 @@ export async function getAppUser(discordId: string): Promise<AppUser | null> {
     admin: Boolean(item.admin),
     usageInputTokens: Number(item.usageInputTokens ?? 0),
     usageOutputTokens: Number(item.usageOutputTokens ?? 0),
+    budgetUsd: Number(item.budgetUsd ?? config.budgetUsd),
   };
+}
+
+export async function raiseUserBudget(discordId: string, amount: number) {
+  await updateItem(
+    "USERS",
+    userSk(discordId),
+    "SET budgetUsd = if_not_exists(budgetUsd, :base) + :amt",
+    { ":base": config.budgetUsd, ":amt": amount },
+  );
 }
 
 export async function listPendingUsers() {
