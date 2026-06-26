@@ -21,6 +21,24 @@ type Character = {
   imageS3Key?: string;
 };
 
+function FieldShell({
+  label,
+  help,
+  children,
+}: {
+  label: string;
+  help: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium text-purple-100">{label}</span>
+      <span className="mt-0.5 block text-xs text-purple-300/60">{help}</span>
+      <div className="mt-1.5">{children}</div>
+    </label>
+  );
+}
+
 function UpdatedToast({ visible }: { visible: boolean }) {
   if (!visible) return null;
   return (
@@ -253,62 +271,84 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
       {error && <p className="text-red-400">{error}</p>}
 
       <div className="space-y-4">
-        <input
-          defaultValue={character.displayName}
-          maxLength={100}
-          className="input-field"
-          placeholder="Display name"
-          onBlur={(e) => {
-            if (e.target.value !== character.displayName) {
-              void saveCharacterFields({ displayName: e.target.value });
-            }
-          }}
-        />
-        <textarea
-          defaultValue={character.good}
-          maxLength={500}
-          rows={2}
-          className="input-field"
-          placeholder="Good"
-          onBlur={(e) => {
-            if (e.target.value !== (character.good ?? "")) {
-              void saveCharacterFields({ good: e.target.value });
-            }
-          }}
-        />
-        <textarea
-          defaultValue={character.bad}
-          maxLength={500}
-          rows={2}
-          className="input-field"
-          placeholder="Bad"
-          onBlur={(e) => {
-            if (e.target.value !== (character.bad ?? "")) {
-              void saveCharacterFields({ bad: e.target.value });
-            }
-          }}
-        />
-        <textarea
-          defaultValue={character.description}
-          maxLength={2000}
-          rows={6}
-          className="input-field"
-          placeholder="Description"
-          onBlur={(e) => {
-            if (e.target.value !== (character.description ?? "")) {
-              void saveCharacterFields({ description: e.target.value });
-            }
-          }}
-        />
-        <select
-          defaultValue={character.replyStyle}
-          className="input-field"
-          onChange={(e) => void saveCharacterFields({ replyStyle: e.target.value })}
+        <FieldShell
+          label="Name"
+          help="The character's name. Shown in Discord and used as the bot's nickname."
         >
-          {replyStyles.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+          <input
+            defaultValue={character.displayName}
+            maxLength={100}
+            className="input-field"
+            placeholder="Character name"
+            onBlur={(e) => {
+              if (e.target.value !== character.displayName) {
+                void saveCharacterFields({ displayName: e.target.value });
+              }
+            }}
+          />
+        </FieldShell>
+        <FieldShell
+          label="Good (do whenever possible)"
+          help="Things the character should try to do whenever it fits the scene."
+        >
+          <textarea
+            defaultValue={character.good}
+            maxLength={500}
+            rows={2}
+            className="input-field"
+            onBlur={(e) => {
+              if (e.target.value !== (character.good ?? "")) {
+                void saveCharacterFields({ good: e.target.value });
+              }
+            }}
+          />
+        </FieldShell>
+        <FieldShell
+          label="Bad (never do)"
+          help="Hard limits — things the character must never do or say."
+        >
+          <textarea
+            defaultValue={character.bad}
+            maxLength={500}
+            rows={2}
+            className="input-field"
+            onBlur={(e) => {
+              if (e.target.value !== (character.bad ?? "")) {
+                void saveCharacterFields({ bad: e.target.value });
+              }
+            }}
+          />
+        </FieldShell>
+        <FieldShell
+          label="Description"
+          help="Personality, background, appearance, and voice. The more detail, the more consistent the character."
+        >
+          <textarea
+            defaultValue={character.description}
+            maxLength={2000}
+            rows={6}
+            className="input-field"
+            onBlur={(e) => {
+              if (e.target.value !== (character.description ?? "")) {
+                void saveCharacterFields({ description: e.target.value });
+              }
+            }}
+          />
+        </FieldShell>
+        <FieldShell
+          label="Reply style"
+          help="How long the character's replies tend to be."
+        >
+          <select
+            defaultValue={character.replyStyle}
+            className="input-field"
+            onChange={(e) => void saveCharacterFields({ replyStyle: e.target.value })}
+          >
+            {replyStyles.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </FieldShell>
       </div>
 
       <ImageUploadField
