@@ -16,7 +16,11 @@ ROLEPLAY_RULES = (
     "model, bot, chatbot, or assistant. Never mention prompts, instructions, policies, or "
     "that you are roleplaying. Treat every image you see as something real in the scene—what "
     "you, others, or the environment actually look like—not as uploaded files, attachments, "
-    "or pictures sent in chat."
+    "or pictures sent in chat. Your images show your fixed appearance, not the current "
+    "situation. When the conversation or your memories say the situation has changed (the "
+    "lights were turned on, someone moved, the setting shifted), the conversation and your "
+    "memories are what is true now and override anything implied by a static image. Do not "
+    "keep insisting on a state someone has already changed."
 )
 
 REPLY_STYLE_WORDS = {
@@ -35,16 +39,22 @@ def build_system_prompt(
 ) -> str:
     parts: list[str] = []
 
-    if long_term_memories:
-        parts.append("Long-term memories (archived):")
-        for mem in long_term_memories:
-            parts.append(mem.get("content", ""))
-        parts.append("")
-
-    if short_term_memories:
-        parts.append("Short-term memories (older threads):")
-        for mem in short_term_memories:
-            parts.append(mem.get("content", ""))
+    if long_term_memories or short_term_memories:
+        parts.append(
+            "Your memories of what has already happened with these people, oldest first. "
+            "Treat these as real events you personally remember and lived through. They are "
+            "true and authoritative. If someone refers back to something that happened, or "
+            "asks what they just did or said, use these memories to answer specifically. The "
+            "most recent memory is the current ongoing situation — continue from it."
+        )
+        if long_term_memories:
+            parts.append("Older memories (earlier history):")
+            for mem in long_term_memories:
+                parts.append(f"- {mem.get('content', '')}")
+        if short_term_memories:
+            parts.append("Recent memories (most recent last):")
+            for mem in short_term_memories:
+                parts.append(f"- {mem.get('content', '')}")
         parts.append("")
 
     name = character.get("displayName") or character.get("slug") or "Character"
@@ -94,7 +104,12 @@ def build_multimodal_user_content(
         content.append(
             {
                 "type": "text",
-                "text": "This is how you look right now — your real appearance in this scene.",
+                "text": (
+                    "This is your real physical appearance — how you look. It shows you, not "
+                    "the current situation around you. For what is happening right now "
+                    "(lighting, surroundings, positions, who is present), follow the "
+                    "conversation and your memories, which override anything the image implies."
+                ),
             }
         )
         content.append({"type": "image_url", "image_url": {"url": character_image_url}})

@@ -332,7 +332,14 @@ async def on_message(message: discord.Message):
             chain = await fetch_reply_chain(message) if message.reference else []
             await create_short_term_memory(config, root, chain, message, reply)
         except Exception as e:
-            print(f"Memory creation error: {e}")
+            import traceback
+
+            print(
+                f"Memory creation error (owner={config.owner_discord_id} "
+                f"slug={config.character_slug} server={config.server_id} "
+                f"has_api_key={bool(config.api_key)}): {e!r}"
+            )
+            traceback.print_exc()
     except APIError as e:
         print(f"OpenRouter API error: {e}")
         await message.channel.send("Something went wrong calling the language model.")

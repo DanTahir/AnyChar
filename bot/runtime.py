@@ -150,7 +150,14 @@ def load_memories_for_prompt(
             result.append(item)
         return result
 
-    return for_prompt(lt_all), for_prompt(st_all)
+    lt = for_prompt(lt_all)
+    st = for_prompt(st_all)
+    print(
+        f"[MEM] owner={owner_id} slug={slug} server={server_id} "
+        f"msg={current_message.id} included lt={len(lt)} st={len(st)} "
+        f"(queried lt={len(lt_all)} st={len(st_all)})"
+    )
+    return lt, st
 
 
 async def create_short_term_memory(
@@ -175,16 +182,22 @@ async def create_short_term_memory(
 
     count = len(chain) + 2
     if count <= 3:
-        instr = "Summarize this brief exchange in one or two sentences."
+        length = "one or two sentences"
     elif count <= 20:
-        instr = "Summarize this conversation in a short paragraph."
+        length = "a short paragraph"
     else:
-        instr = "Summarize this long conversation in a few paragraphs."
+        length = "a few paragraphs"
+    instr = (
+        f"Summarize this roleplay exchange in {length}. Preserve concrete facts so they can "
+        "be recalled later: who said and did what, by name; specific actions, positions, and "
+        "states (e.g. someone kneeling, lights turned on, an item given); and any requests, "
+        "promises, or decisions. Write it factually in the past tense. Do not invent details."
+    )
 
     summary = await chat_completion(
         api_key=config.api_key,
         owner_discord_id=owner_id,
-        system="You write concise roleplay memory summaries.",
+        system="You write factual roleplay memory summaries that preserve concrete details.",
         user_content=f"{instr}\n\n{thread_text}",
         use_vision=False,
     )
@@ -207,6 +220,11 @@ async def create_short_term_memory(
         nick = getattr(msg.author, "display_name", str(msg.author))
         participants.append({"discordUserId": uid, "nickname": nick})
 
+    print(
+        f"[MEM create] owner={owner_id} slug={slug} server={server_id} "
+        f"thread_root={thread_root.id} last_human={last_human.id} "
+        f"summary_len={len(summary or '')}"
+    )
     root_ts = message_snowflake_time(thread_root)
     sk = (
         f"USERID#{owner_id}#CHAR#{slug}#SERVER#{server_id}"
