@@ -238,7 +238,10 @@ async def generate_reply(
         message,
     )
 
-    system = build_system_prompt(config.character, config.known_users, lt, st)
+    owner_age18plus = bool(config.owner_user.get("age18plus"))
+    system = build_system_prompt(
+        config.character, config.known_users, lt, st, owner_age18plus
+    )
     char_name = config.character.get("displayName") or config.character.get("slug", "Character")
 
     if chain:

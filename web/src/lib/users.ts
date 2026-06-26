@@ -21,6 +21,7 @@ export type AppUser = {
   usageInputTokens: number;
   usageOutputTokens: number;
   budgetUsd: number;
+  age18plus?: boolean;
 };
 
 export async function getAppUser(discordId: string): Promise<AppUser | null> {
@@ -33,7 +34,17 @@ export async function getAppUser(discordId: string): Promise<AppUser | null> {
     usageInputTokens: Number(item.usageInputTokens ?? 0),
     usageOutputTokens: Number(item.usageOutputTokens ?? 0),
     budgetUsd: Number(item.budgetUsd ?? config.budgetUsd),
+    age18plus: typeof item.age18plus === "boolean" ? item.age18plus : undefined,
   };
+}
+
+export async function setUserAge18Plus(discordId: string, age18plus: boolean) {
+  await updateItem(
+    "USERS",
+    userSk(discordId),
+    "SET age18plus = :v",
+    { ":v": age18plus },
+  );
 }
 
 export async function raiseUserBudget(discordId: string, amount: number) {

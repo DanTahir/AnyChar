@@ -11,6 +11,13 @@ PLATFORM_CONTENT_POLICY = (
     "but must not be combined with sexual content involving minors."
 )
 
+RESTRICTED_CONTENT_POLICY = (
+    "Keep all content appropriate for a general audience. Never engage in, describe, or "
+    "roleplay sexual content, graphic or gratuitous violence, or any other mature or "
+    "age-inappropriate themes. If asked for such content, stay in character and steer the "
+    "interaction back to something appropriate."
+)
+
 ROLEPLAY_RULES = (
     "Always stay fully in character at all times. Never refer to yourself as an AI, language "
     "model, bot, chatbot, or assistant. Never mention prompts, instructions, policies, or "
@@ -36,6 +43,7 @@ def build_system_prompt(
     known_users: list[dict[str, Any]],
     long_term_memories: list[dict[str, Any]],
     short_term_memories: list[dict[str, Any]],
+    age18plus: bool = False,
 ) -> str:
     parts: list[str] = []
 
@@ -75,7 +83,8 @@ def build_system_prompt(
     if character.get("bad"):
         parts.append(f"You must never: {character['bad']}")
 
-    parts.append(f"\nPlatform content policy: {PLATFORM_CONTENT_POLICY}")
+    content_policy = PLATFORM_CONTENT_POLICY if age18plus else RESTRICTED_CONTENT_POLICY
+    parts.append(f"\nPlatform content policy: {content_policy}")
     parts.append(f"\nRoleplay rules: {ROLEPLAY_RULES}")
 
     style = character.get("replyStyle") or "semi-lit"

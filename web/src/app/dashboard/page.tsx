@@ -5,12 +5,17 @@ import { auth } from "@/lib/auth";
 import { estimateCostUsd } from "@/lib/config";
 import { getAppUser, listCharacters } from "@/lib/users";
 
+import AgeGate from "./age-gate";
+
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user) redirect("/");
   if (!session.user.approved) redirect("/pending");
 
   const user = await getAppUser(session.user.id);
+  if (user && user.age18plus === undefined) {
+    return <AgeGate />;
+  }
   const characters = await listCharacters(session.user.id);
   const cost = estimateCostUsd(
     user?.usageInputTokens ?? 0,
