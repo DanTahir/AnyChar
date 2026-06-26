@@ -2,7 +2,16 @@
 
 import { useState } from "react";
 
-type AdminUser = { discordId: string; name?: string; email?: string };
+type AdminUser = {
+  discordId: string;
+  name?: string;
+  email?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+};
+
+const numberFmt = new Intl.NumberFormat("en-US");
 
 function UserTable({
   users,
@@ -10,12 +19,14 @@ function UserTable({
   actionLabel,
   actionClass,
   onAction,
+  showUsage = false,
 }: {
   users: AdminUser[];
   emptyMessage: string;
   actionLabel: string;
   actionClass: string;
   onAction: (discordId: string) => void;
+  showUsage?: boolean;
 }) {
   if (users.length === 0) {
     return <p className="text-sm text-purple-400/50">{emptyMessage}</p>;
@@ -27,21 +38,37 @@ function UserTable({
         <tr className="border-b border-purple-900/40 text-purple-300/70">
           <th className="px-4 py-2">User</th>
           <th className="px-4 py-2">Discord ID</th>
+          {showUsage && <th className="px-4 py-2">Token spending</th>}
           <th className="px-4 py-2">Actions</th>
         </tr>
       </thead>
       <tbody>
-        {users.map((u) => (
-          <tr key={u.discordId} className="border-b border-purple-900/30">
-            <td className="px-4 py-2">{u.name ?? u.email ?? "—"}</td>
-            <td className="px-4 py-2 font-mono">{u.discordId}</td>
-            <td className="px-4 py-2">
-              <button type="button" onClick={() => onAction(u.discordId)} className={actionClass}>
-                {actionLabel}
-              </button>
-            </td>
-          </tr>
-        ))}
+        {users.map((u) => {
+          const total = (u.inputTokens ?? 0) + (u.outputTokens ?? 0);
+          return (
+            <tr key={u.discordId} className="border-b border-purple-900/30">
+              <td className="px-4 py-2">{u.name ?? u.email ?? "—"}</td>
+              <td className="px-4 py-2 font-mono">{u.discordId}</td>
+              {showUsage && (
+                <td className="px-4 py-2">
+                  <div className="font-medium text-purple-100">
+                    {numberFmt.format(total)} tokens
+                  </div>
+                  <div className="text-xs text-purple-300/60">
+                    {numberFmt.format(u.inputTokens ?? 0)} in ·{" "}
+                    {numberFmt.format(u.outputTokens ?? 0)} out · ~$
+                    {(u.costUsd ?? 0).toFixed(4)}
+                  </div>
+                </td>
+              )}
+              <td className="px-4 py-2">
+                <button type="button" onClick={() => onAction(u.discordId)} className={actionClass}>
+                  {actionLabel}
+                </button>
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
@@ -114,6 +141,7 @@ export default function AdminClient({
           actionLabel="Unapprove"
           actionClass="text-red-400 hover:text-red-300"
           onAction={unapprove}
+          showUsage
         />
       </section>
     </div>
