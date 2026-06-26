@@ -25,8 +25,10 @@ from messages import (
     build_thread_prompt,
     fetch_message,
     fetch_reply_chain,
+    last_bot_message_text,
     send_chained_replies,
     single_message_prompt,
+    texts_too_similar,
 )
 from openrouter_client import chat_completion
 from prompt_builder import build_multimodal_user_content, build_system_prompt
@@ -240,7 +242,12 @@ async def generate_reply(
 
     owner_age18plus = bool(config.owner_user.get("age18plus"))
     system = build_system_prompt(
-        config.character, config.known_users, lt, st, owner_age18plus
+        config.character,
+        config.known_users,
+        lt,
+        st,
+        owner_age18plus,
+        has_live_conversation=bool(chain),
     )
     char_name = config.character.get("displayName") or config.character.get("slug", "Character")
 
@@ -280,13 +287,38 @@ async def generate_reply(
         context_imgs,
     )
 
-    return await chat_completion(
+    reply = await chat_completion(
         api_key=config.api_key,
         owner_discord_id=config.owner_discord_id,
         system=system,
         user_content=user_content,
         use_vision=True,
     )
+
+    # Self-repetition guard: if the model echoed its previous reply in this thread
+    # almost verbatim, regenerate once with an explicit do-not-repeat instruction.
+    prev_bot_text = last_bot_message_text(chain, client.user)
+    if prev_bot_text and texts_too_similar(prev_bot_text, reply):
+        nudge_text = (
+            "Your reply was almost identical to your previous message in this conversation. "
+            "Do not repeat yourself or restate the same request. Respond to what was just "
+            "said, take a clearly different action, and move the scene forward."
+        )
+        if isinstance(user_content, list):
+            retry_content: str | list[dict] = user_content + [
+                {"type": "text", "text": nudge_text}
+            ]
+        else:
+            retry_content = f"{user_content}\n\n{nudge_text}"
+        reply = await chat_completion(
+            api_key=config.api_key,
+            owner_discord_id=config.owner_discord_id,
+            system=system,
+            user_content=retry_content,
+            use_vision=True,
+        )
+
+    return reply
 
 
 @client.event

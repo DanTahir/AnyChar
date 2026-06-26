@@ -37,6 +37,17 @@ REPLY_STYLE_WORDS = {
     "novella": 500,
 }
 
+# Cap how many short-term memories get injected so a long or repetitive run of
+# memories can never dominate the prompt and drown out the live conversation.
+MAX_SHORT_TERM_IN_PROMPT = 25
+
+ANTI_REPETITION_RULE = (
+    "Move the scene forward with every reply. Never repeat the same request, command, "
+    "demand, or line that you — or your memories — already used; if you notice yourself "
+    "about to ask for or say the same thing again, do something different and progress the "
+    "interaction instead. Always respond to what the other person just said and did."
+)
+
 
 def build_system_prompt(
     character: dict[str, Any],
@@ -44,17 +55,39 @@ def build_system_prompt(
     long_term_memories: list[dict[str, Any]],
     short_term_memories: list[dict[str, Any]],
     age18plus: bool = False,
+    has_live_conversation: bool = False,
 ) -> str:
     parts: list[str] = []
 
+    # Only ever show the most recent short-term memories. Older ones are either
+    # compacted into long-term memory or are stale context.
+    if len(short_term_memories) > MAX_SHORT_TERM_IN_PROMPT:
+        short_term_memories = short_term_memories[-MAX_SHORT_TERM_IN_PROMPT:]
+
     if long_term_memories or short_term_memories:
-        parts.append(
-            "Your memories of what has already happened with these people, oldest first. "
-            "Treat these as real events you personally remember and lived through. They are "
-            "true and authoritative. If someone refers back to something that happened, or "
-            "asks what they just did or said, use these memories to answer specifically. The "
-            "most recent memory is the current ongoing situation — continue from it."
-        )
+        if has_live_conversation:
+            # There is a live reply chain in the user message — THAT is the present.
+            # Memories are background only, and must not be replayed as if current.
+            parts.append(
+                "Your memories of what has already happened with these people, oldest first. "
+                "Treat these as real events you personally remember and lived through; they "
+                "are true and authoritative for recall. They are BACKGROUND ONLY. The "
+                "conversation shown in the message you are replying to below is what is "
+                "happening right now — respond to that. Use these memories only for continuity "
+                "and to answer questions about the past. Do not restart, replay, or repeat an "
+                "older memory as if it were the current moment."
+            )
+        else:
+            # Cold start (a fresh @mention, no live chain). Continue from the last
+            # memory, but explicitly progress rather than repeat it.
+            parts.append(
+                "Your memories of what has already happened with these people, oldest first. "
+                "Treat these as real events you personally remember and lived through. They "
+                "are true and authoritative. If someone refers back to something that "
+                "happened, or asks what they just did or said, use these memories to answer "
+                "specifically. The most recent memory is where things last left off — continue "
+                "naturally from it, but move the scene forward instead of repeating it."
+            )
         if long_term_memories:
             parts.append("Older memories (earlier history):")
             for mem in long_term_memories:
@@ -86,6 +119,7 @@ def build_system_prompt(
     content_policy = PLATFORM_CONTENT_POLICY if age18plus else RESTRICTED_CONTENT_POLICY
     parts.append(f"\nPlatform content policy: {content_policy}")
     parts.append(f"\nRoleplay rules: {ROLEPLAY_RULES}")
+    parts.append(f"\nKeep the scene moving: {ANTI_REPETITION_RULE}")
 
     style = character.get("replyStyle") or "semi-lit"
     words = REPLY_STYLE_WORDS.get(style, 150)

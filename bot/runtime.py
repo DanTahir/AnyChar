@@ -17,7 +17,7 @@ from dynamo import (
     query_memories,
     token_estimate,
 )
-from messages import get_thread_root
+from messages import get_thread_root, texts_too_similar
 from openrouter_client import chat_completion
 
 
@@ -171,13 +171,19 @@ async def create_short_term_memory(
     slug = config.character_slug
     server_id = config.server_id
 
+    char_name = (
+        config.character.get("displayName")
+        or config.character.get("slug")
+        or "the character"
+    )
+
     lines = []
     for msg in chain + [current]:
         if msg.author.bot:
             continue
         nick = getattr(msg.author, "display_name", str(msg.author))
         lines.append(f"{nick} (user:{msg.author.id}): {msg.content or '[no text]'}")
-    lines.append(f"Character reply: {bot_reply}")
+    lines.append(f"{char_name} (the character, not a user): {bot_reply}")
     thread_text = "\n".join(lines)
 
     count = len(chain) + 2
@@ -188,16 +194,23 @@ async def create_short_term_memory(
     else:
         length = "a few paragraphs"
     instr = (
-        f"Summarize this roleplay exchange in {length}. Preserve concrete facts so they can "
-        "be recalled later: who said and did what, by name; specific actions, positions, and "
-        "states (e.g. someone kneeling, lights turned on, an item given); and any requests, "
-        "promises, or decisions. Write it factually in the past tense. Do not invent details."
+        f"Summarize this roleplay exchange in {length}. The character is named {char_name}; "
+        f"refer to {char_name} by name and never assign {char_name} a user ID. Only the human "
+        "participants have user IDs (shown as 'user:<id>'); keep each person's name and ID "
+        "matched correctly and never merge two different people into one. Preserve concrete "
+        "facts so they can be recalled later: who said and did what, by name; specific "
+        "actions, positions, and states (e.g. someone kneeling, lights turned on, an item "
+        "given); and any requests, promises, or decisions. Write it factually in the past "
+        "tense. Do not invent details."
     )
 
     summary = await chat_completion(
         api_key=config.api_key,
         owner_discord_id=owner_id,
-        system="You write factual roleplay memory summaries that preserve concrete details.",
+        system=(
+            "You write factual roleplay memory summaries that preserve concrete details. "
+            f"The character being roleplayed is {char_name} and is never a Discord user."
+        ),
         user_content=f"{instr}\n\n{thread_text}",
         use_vision=False,
     )
@@ -230,6 +243,22 @@ async def create_short_term_memory(
         f"USERID#{owner_id}#CHAR#{slug}#SERVER#{server_id}"
         f"#MEMORY#{root_ts}#{thread_root.id}#{last_human.id}"
     )
+
+    # De-dupe: don't pile on a memory that is near-identical to the most recent
+    # *other* memory. Re-summarizing the same stuck scene into 20+ near-duplicate
+    # memories is what let the old loop snowball. Updating this thread's own
+    # memory (same sk) as the conversation grows is always allowed.
+    existing = query_memories(owner_id, slug, server_id, "MEMORY#")
+    prior_distinct = [m for m in existing if m.get("sk") != sk]
+    if summary and prior_distinct and texts_too_similar(
+        prior_distinct[-1].get("content", ""), summary
+    ):
+        print(
+            f"[MEM skip dup] owner={owner_id} slug={slug} server={server_id} "
+            f"thread_root={thread_root.id} (near-identical to previous memory)"
+        )
+        return
+
     put_memory_item(
         {
             "pk": "USERS",
@@ -251,10 +280,10 @@ async def maybe_compact_short_term(config: RuntimeConfig) -> None:
     server_id = config.server_id
     items = query_memories(owner_id, slug, server_id, "MEMORY#")
     total = sum(int(i.get("tokenEstimate") or 0) for i in items)
-    if total <= 20000:
+    if total <= 8000:
         return
 
-    keep_tokens = 10000
+    keep_tokens = 4000
     kept_count = 0
     to_summarize: list[dict] = []
     for item in reversed(items):

@@ -1,8 +1,30 @@
 from __future__ import annotations
 
+import difflib
+
 import discord
 
 from discord_images import attachment_note
+
+
+def texts_too_similar(a: str, b: str, threshold: float = 0.9) -> bool:
+    """True when two texts are near-identical (used to detect repetition loops)."""
+    a = (a or "").strip()
+    b = (b or "").strip()
+    if not a or not b:
+        return False
+    return difflib.SequenceMatcher(None, a, b).ratio() >= threshold
+
+
+def last_bot_message_text(
+    chain: list[discord.Message], bot_user: discord.ClientUser
+) -> str | None:
+    """The text of the most recent message authored by the bot in this reply chain."""
+    for msg in reversed(chain):
+        if msg.author == bot_user:
+            text = (msg.content or "").strip()
+            return text or None
+    return None
 
 
 async def fetch_message(
