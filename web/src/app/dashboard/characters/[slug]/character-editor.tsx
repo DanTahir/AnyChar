@@ -112,6 +112,7 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
   const [knownUsers, setKnownUsers] = useState<KnownUser[]>([]);
   const [error, setError] = useState("");
   const [ownerId, setOwnerId] = useState("");
+  const [newKnownId, setNewKnownId] = useState("");
   const [showUpdated, setShowUpdated] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -132,6 +133,7 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
       .then((r) => r.json())
       .then((d) => {
         setCharacter(d.character);
+        setOwnerId(d.ownerId ?? "");
         setKnownUsers(
           (d.knownUsers ?? []).map((k: KnownUser & { sk: string }) => ({
             knownUserId: k.knownUserId ?? k.sk.split("#KNOWN#")[1],
@@ -191,21 +193,34 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
   }
 
   async function addKnownUser() {
-    if (!ownerId.match(/^\d+$/)) {
+    if (!newKnownId.match(/^\d+$/)) {
       setError("Enter a numeric Discord user ID");
       return;
     }
-    const res = await fetch(`/api/characters/${slug}/known/${ownerId}`, {
+    const res = await fetch(`/api/characters/${slug}/known/${newKnownId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ discordUserId: ownerId, content: "" }),
+      body: JSON.stringify({ discordUserId: newKnownId, content: "" }),
     });
     if (!res.ok) {
       setError((await res.json()).error ?? "Failed to add");
       return;
     }
-    setKnownUsers((prev) => [...prev, { knownUserId: ownerId, content: "" }]);
-    setOwnerId("");
+    setKnownUsers((prev) => [...prev, { knownUserId: newKnownId, content: "" }]);
+    setNewKnownId("");
+    flashUpdated();
+  }
+
+  async function deleteKnownUser(knownUserId: string) {
+    const res = await fetch(`/api/characters/${slug}/known/${knownUserId}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      setError((await res.json()).error ?? "Failed to delete");
+      return;
+    }
+    setKnownUsers((prev) => prev.filter((k) => k.knownUserId !== knownUserId));
+    setError("");
     flashUpdated();
   }
 
@@ -315,7 +330,25 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
         </div>
         {knownUsers.map((ku) => (
           <div key={ku.knownUserId} className="card space-y-3 p-4">
-            <p className="text-sm text-purple-300/70">User ID: {ku.knownUserId}</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm text-purple-300/70">
+                User ID: {ku.knownUserId}
+                {ku.knownUserId === ownerId && (
+                  <span className="ml-2 rounded bg-purple-800/50 px-1.5 py-0.5 text-xs text-purple-200">
+                    Owner
+                  </span>
+                )}
+              </p>
+              {ku.knownUserId !== ownerId && (
+                <button
+                  type="button"
+                  onClick={() => void deleteKnownUser(ku.knownUserId)}
+                  className="text-sm font-medium text-red-400 hover:text-red-300"
+                >
+                  Delete
+                </button>
+              )}
+            </div>
             <textarea
               defaultValue={ku.content}
               maxLength={knownUsers.length <= 1 ? 2000 : 500}
@@ -340,8 +373,8 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
         {knownUsers.length < 5 && (
           <div className="flex gap-2">
             <input
-              value={ownerId}
-              onChange={(e) => setOwnerId(e.target.value)}
+              value={newKnownId}
+              onChange={(e) => setNewKnownId(e.target.value)}
               placeholder="Discord user ID"
               className="input-field flex-1"
             />

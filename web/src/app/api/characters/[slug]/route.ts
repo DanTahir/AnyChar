@@ -20,7 +20,7 @@ export async function GET(_req: Request, { params }: Params) {
     const char = await getCharacter(s.user.id, slug);
     if (!char) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const known = await listKnownUsers(s.user.id, slug);
-    return NextResponse.json({ character: char, knownUsers: known });
+    return NextResponse.json({ character: char, knownUsers: known, ownerId: s.user.id });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";
     return NextResponse.json({ error: msg }, { status: 401 });
