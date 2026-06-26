@@ -60,7 +60,12 @@ export async function requireAdmin(session: Session | null) {
 
 export async function listCharacters(ownerId: string) {
   const items = await queryPkSk("USERS", `USERID#${ownerId}#CHAR#`);
-  return items.filter((i) => !String(i.sk).includes("#KNOWN#"));
+  // A character SK is exactly USERID#{owner}#CHAR#{slug}. Anything with a further
+  // "#" segment (e.g. #KNOWN#, #SERVER#...#MEMORY#) is a sub-item, not a character.
+  return items.filter((i) => {
+    const slugPart = String(i.sk).split("#CHAR#")[1] ?? "";
+    return slugPart.length > 0 && !slugPart.includes("#");
+  });
 }
 
 export async function getCharacter(ownerId: string, slug: string) {

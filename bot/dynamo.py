@@ -54,7 +54,14 @@ def list_characters_for_user(discord_id: str | int) -> list[dict[str, Any]]:
         KeyConditionExpression=Key("pk").eq("USERS")
         & Key("sk").begins_with(f"USERID#{discord_id}#CHAR#"),
     )
-    return [i for i in resp.get("Items", []) if "#KNOWN#" not in i["sk"]]
+    # A character SK is exactly USERID#{owner}#CHAR#{slug}. Skip sub-items such as
+    # #KNOWN# entries and #SERVER#...#MEMORY# records, which have a further "#".
+    chars = []
+    for item in resp.get("Items", []):
+        slug_part = item["sk"].split("#CHAR#", 1)[-1]
+        if slug_part and "#" not in slug_part:
+            chars.append(item)
+    return chars
 
 
 def list_known_users(owner_id: str | int, slug: str) -> list[dict[str, Any]]:
