@@ -23,6 +23,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               </span>
             </Link>
             <nav className="flex items-center gap-4 text-sm">
+              <Link href="/about" className="link-accent">
+                About
+              </Link>
               {session?.user ? (
                 <>
                   <div className="hidden items-center gap-2 sm:flex">
