@@ -15,8 +15,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <header className="border-b border-purple-900/40 bg-[#0a0612]/80 backdrop-blur-md">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
             <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-purple-600 text-sm font-bold shadow-lg shadow-purple-900/50">
-                A
+              <span className="inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white shadow-lg shadow-purple-900/50">
+                <Image
+                  src="/logo.png"
+                  alt="AnyChar logo"
+                  width={32}
+                  height={32}
+                  className="h-full w-full object-contain"
+                />
               </span>
               <span className="bg-gradient-to-r from-purple-200 to-purple-400 bg-clip-text text-transparent">
                 AnyChar
