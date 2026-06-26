@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
+import { fetchDiscordDisplayNames } from "@/lib/discord-bot";
 import { characterSchema } from "@/lib/schemas/character";
 import {
   deleteCharacter,
@@ -20,7 +21,11 @@ export async function GET(_req: Request, { params }: Params) {
     const char = await getCharacter(s.user.id, slug);
     if (!char) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const known = await listKnownUsers(s.user.id, slug);
-    return NextResponse.json({ character: char, knownUsers: known, ownerId: s.user.id });
+    const idOf = (k: Record<string, unknown>): string =>
+      (k.knownUserId as string | undefined) ?? String(k.sk ?? "").split("#KNOWN#")[1] ?? "";
+    const usernames = await fetchDiscordDisplayNames(known.map(idOf));
+    const knownUsers = known.map((k) => ({ ...k, displayName: usernames[idOf(k)] }));
+    return NextResponse.json({ character: char, knownUsers, ownerId: s.user.id });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";
     return NextResponse.json({ error: msg }, { status: 401 });

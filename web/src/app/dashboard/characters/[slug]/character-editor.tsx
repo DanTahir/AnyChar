@@ -9,6 +9,7 @@ type KnownUser = {
   knownUserId: string;
   content: string;
   imageS3Key?: string;
+  displayName?: string;
 };
 
 type Character = {
@@ -157,6 +158,7 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
             knownUserId: k.knownUserId ?? k.sk.split("#KNOWN#")[1],
             content: k.content ?? "",
             imageS3Key: k.imageS3Key,
+            displayName: k.displayName,
           })),
         );
       });
@@ -371,14 +373,22 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
         {knownUsers.map((ku) => (
           <div key={ku.knownUserId} className="card space-y-3 p-4">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm text-purple-300/70">
-                User ID: {ku.knownUserId}
+              <div className="text-sm text-purple-300/70">
+                <span className="font-medium text-purple-100">
+                  {ku.displayName ??
+                    (ku.knownUserId === ownerId
+                      ? "You (character creator)"
+                      : `User ${ku.knownUserId}`)}
+                </span>
                 {ku.knownUserId === ownerId && (
                   <span className="ml-2 rounded bg-purple-800/50 px-1.5 py-0.5 text-xs text-purple-200">
-                    Owner
+                    Character creator
                   </span>
                 )}
-              </p>
+                <span className="mt-0.5 block text-xs text-purple-300/50">
+                  ID: {ku.knownUserId}
+                </span>
+              </div>
               {ku.knownUserId !== ownerId && (
                 <button
                   type="button"
