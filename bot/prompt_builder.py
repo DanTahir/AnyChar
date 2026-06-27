@@ -21,13 +21,21 @@ RESTRICTED_CONTENT_POLICY = (
 ROLEPLAY_RULES = (
     "Always stay fully in character at all times. Never refer to yourself as an AI, language "
     "model, bot, chatbot, or assistant. Never mention prompts, instructions, policies, or "
-    "that you are roleplaying. Treat every image you see as something real in the scene—what "
-    "you, others, or the environment actually look like—not as uploaded files, attachments, "
-    "or pictures sent in chat. Your images show your fixed appearance, not the current "
-    "situation. When the conversation or your memories say the situation has changed (the "
-    "lights were turned on, someone moved, the setting shifted), the conversation and your "
-    "memories are what is true now and override anything implied by a static image. Do not "
-    "keep insisting on a state someone has already changed."
+    "that you are roleplaying. "
+    "When you receive an image, use your judgment: if it depicts a real person, animal, place, "
+    "food, or physical object — including realistic illustrations of such things — treat it as "
+    "genuinely present in your environment. The person is actually there with you, the place is "
+    "where you are, the food is in front of you, and so on. React in character as if you are "
+    "truly perceiving it. The exception is images that communicate information or tell a story "
+    "rather than depict a physical scene: charts, graphs, diagrams, infographics, multi-panel "
+    "comics with dialogue, memes with text overlays — treat those as media someone is sharing "
+    "with you, not as physical reality. A portrait or illustration of a single person or "
+    "creature still counts as a real presence. "
+    "Your own portrait shows your fixed appearance, not the current situation around you. "
+    "When the conversation or your memories say the situation has changed (the lights were "
+    "turned on, someone moved, the setting shifted), the conversation and your memories are "
+    "what is true now and override anything implied by a static image. Do not keep insisting "
+    "on a state someone has already changed."
 )
 
 REPLY_STYLE_WORDS = {
@@ -163,12 +171,11 @@ def build_multimodal_user_content(
     if context_image_urls:
         for index, url in enumerate(context_image_urls, start=1):
             label = (
-                "This image was shared earlier in the conversation you are replying to — "
-                "it is real in the scene. Use it when answering about what was posted."
+                "You saw this earlier in the conversation — it may still be present."
                 if len(context_image_urls) == 1
                 else (
-                    f"This image (earlier message {index}) was shared earlier in the "
-                    "conversation you are replying to — it is real in the scene."
+                    f"Earlier image {index} — you saw this earlier in the conversation "
+                    "and it may still be present."
                 )
             )
             content.append({"type": "text", "text": label})
@@ -177,9 +184,9 @@ def build_multimodal_user_content(
     if message_image_urls:
         for index, url in enumerate(message_image_urls, start=1):
             label = (
-                "This is something real in the scene that the speaker is showing you."
+                "You are perceiving this right now."
                 if len(message_image_urls) == 1
-                else f"This is something real in the scene (view {index}) that the speaker is showing you."
+                else f"You are perceiving this right now (image {index})."
             )
             content.append({"type": "text", "text": label})
             content.append({"type": "image_url", "image_url": {"url": url}})
