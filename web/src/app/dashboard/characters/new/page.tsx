@@ -24,6 +24,7 @@ export default function NewCharacterPage() {
         bad: form.get("bad"),
         description: form.get("description"),
         replyStyle: form.get("replyStyle"),
+        memoryLevel: form.get("memoryLevel"),
       }),
     });
     const data = await res.json();
@@ -76,6 +77,17 @@ export default function NewCharacterPage() {
                 {s}
               </option>
             ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-sm font-medium">Memory level</span>
+          <span className="mt-0.5 block text-xs text-purple-300/60">
+            How much this character remembers across sessions.
+          </span>
+          <select name="memoryLevel" defaultValue="medium" className="input-field mt-1.5">
+            <option value="short">short — Less expensive</option>
+            <option value="medium">medium — Average cost</option>
+            <option value="long">long — More expensive</option>
           </select>
         </label>
         {error && <p className="text-sm text-red-400">{error}</p>}

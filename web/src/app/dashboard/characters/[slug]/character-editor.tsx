@@ -19,6 +19,7 @@ type Character = {
   bad?: string;
   description?: string;
   replyStyle?: string;
+  memoryLevel?: string;
   imageS3Key?: string;
 };
 
@@ -349,6 +350,20 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
             {replyStyles.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
+          </select>
+        </FieldShell>
+        <FieldShell
+          label="Memory level"
+          help="How much this character remembers across sessions."
+        >
+          <select
+            defaultValue={character.memoryLevel ?? "medium"}
+            className="input-field"
+            onChange={(e) => void saveCharacterFields({ memoryLevel: e.target.value })}
+          >
+            <option value="short">short — Less expensive</option>
+            <option value="medium">medium — Average cost</option>
+            <option value="long">long — More expensive</option>
           </select>
         </FieldShell>
       </div>

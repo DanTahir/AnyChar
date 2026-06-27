@@ -21,6 +21,18 @@ from messages import get_thread_root, texts_too_similar
 from openrouter_client import chat_completion
 
 
+_MEMORY_LIMITS = {
+    "short":  {"st_max": 5_000,  "st_keep": 2_500,  "lt_max": 5_000,  "lt_keep": 2_500},
+    "medium": {"st_max": 10_000, "st_keep": 5_000,  "lt_max": 10_000, "lt_keep": 5_000},
+    "long":   {"st_max": 20_000, "st_keep": 10_000, "lt_max": 20_000, "lt_keep": 10_000},
+}
+
+
+def get_memory_limits(config: "RuntimeConfig") -> dict:
+    level = (config.character.get("memoryLevel") or "medium").lower()
+    return _MEMORY_LIMITS.get(level, _MEMORY_LIMITS["medium"])
+
+
 @dataclass
 class RuntimeConfig:
     owner_discord_id: str
@@ -278,12 +290,13 @@ async def maybe_compact_short_term(config: RuntimeConfig) -> None:
     owner_id = config.owner_discord_id
     slug = config.character_slug
     server_id = config.server_id
+    limits = get_memory_limits(config)
     items = query_memories(owner_id, slug, server_id, "MEMORY#")
     total = sum(int(i.get("tokenEstimate") or 0) for i in items)
-    if total <= 10000:
+    if total <= limits["st_max"]:
         return
 
-    keep_tokens = 5000
+    keep_tokens = limits["st_keep"]
     kept_count = 0
     to_summarize: list[dict] = []
     for item in reversed(items):
@@ -323,12 +336,13 @@ async def maybe_compact_long_term(config: RuntimeConfig) -> None:
     owner_id = config.owner_discord_id
     slug = config.character_slug
     server_id = config.server_id
+    limits = get_memory_limits(config)
     items = query_memories(owner_id, slug, server_id, "MEMORYLT#")
     total = sum(int(i.get("tokenEstimate") or 0) for i in items)
-    if total <= 20000:
+    if total <= limits["lt_max"]:
         return
 
-    keep_tokens = 10000
+    keep_tokens = limits["lt_keep"]
     kept_count = 0
     to_summarize: list[dict] = []
     for item in reversed(items):

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const replyStyles = ["one-liner", "semi-lit", "literate", "novella"] as const;
+export const memoryLevels = ["short", "medium", "long"] as const;
 
 export const characterSchema = z.object({
   displayName: z.string().min(1).max(100),
@@ -8,6 +9,7 @@ export const characterSchema = z.object({
   bad: z.string().max(500).optional().default(""),
   description: z.string().max(2000).optional().default(""),
   replyStyle: z.enum(replyStyles).default("semi-lit"),
+  memoryLevel: z.enum(memoryLevels).default("medium"),
 });
 
 export const knownUserSchema = z.object({
