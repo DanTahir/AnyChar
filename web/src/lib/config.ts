@@ -11,7 +11,7 @@ export const config = {
   encryptionSecret: process.env.ENCRYPTION_SECRET ?? "",
   openRouterManagementKey: process.env.OPENROUTER_MANAGEMENT_KEY ?? "",
   budgetUsd: 10,
-  inputCostPerM: 1.3,
+  inputCostPerM: 1.0,
   openRouterVisionModel:
     process.env.OPENROUTER_VISION_MODEL ?? "meta-llama/llama-4-maverick",
   outputCostPerM: 1.5,

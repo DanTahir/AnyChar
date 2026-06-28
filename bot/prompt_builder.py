@@ -54,6 +54,14 @@ CREATIVITY_RULE = (
     "responses; each reply should feel distinct and alive."
 )
 
+SECOND_PERSON_RULE = (
+    "When roleplaying actions toward the person you are responding to, address them in the "
+    "second person (you/your) — in dialogue and when describing what you do to or with them. "
+    "In multi-character reply chains, that person is the most recent human user in the thread, "
+    "not another character's last bot reply. Only use third person or other address if the "
+    "character description or that user's Known User profile explicitly calls for it."
+)
+
 
 def _natural_join(names: list[str]) -> str:
     names = [n for n in names if n]
@@ -187,6 +195,7 @@ def build_system_prompt(
     parts.append(f"\nRoleplay rules: {ROLEPLAY_RULES}")
     parts.append(f"\nKeep the scene moving: {ANTI_REPETITION_RULE}")
     parts.append(f"\nCreativity: {CREATIVITY_RULE}")
+    parts.append(f"\nAddressing the user: {SECOND_PERSON_RULE}")
 
     style = character.get("replyStyle") or "semi-lit"
     words = REPLY_STYLE_WORDS.get(style, 150)
