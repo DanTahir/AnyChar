@@ -127,23 +127,81 @@ def link_guild_to_user(discord_id: str | int, guild_id: str | int) -> None:
     )
 
 
+def get_guild_active_characters(cfg: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Normalize a guild config into an ordered list of active characters.
+
+    Prefers the new ``activeCharacters`` list, falling back to the legacy single
+    ``activeOwnerDiscordId``/``activeCharacterSlug`` fields as a 1-element list.
+    """
+    if not cfg:
+        return []
+    chars = cfg.get("activeCharacters")
+    if isinstance(chars, list) and chars:
+        result: list[dict[str, Any]] = []
+        for entry in chars:
+            owner = entry.get("ownerDiscordId")
+            slug = entry.get("slug")
+            if owner and slug:
+                result.append(
+                    {
+                        "ownerDiscordId": str(owner),
+                        "slug": str(slug),
+                        "displayName": entry.get("displayName") or str(slug),
+                    }
+                )
+        if result:
+            return result
+    owner_id = cfg.get("activeOwnerDiscordId")
+    slug = cfg.get("activeCharacterSlug")
+    if owner_id and slug:
+        return [
+            {
+                "ownerDiscordId": str(owner_id),
+                "slug": str(slug),
+                "displayName": str(slug),
+            }
+        ]
+    return []
+
+
+def set_guild_active_characters(
+    guild_id: str | int,
+    characters: list[dict[str, Any]],
+    updated_by: str | int,
+) -> None:
+    from datetime import datetime, timezone
+
+    normalized = [
+        {
+            "ownerDiscordId": str(c["ownerDiscordId"]),
+            "slug": str(c["slug"]),
+            "displayName": str(c.get("displayName") or c["slug"]),
+        }
+        for c in characters
+    ]
+    item: dict[str, Any] = {
+        "pk": "GUILDS",
+        "sk": f"GUILDID#{guild_id}",
+        "activeCharacters": normalized,
+        "updatedByDiscordId": str(updated_by),
+        "updatedAt": datetime.now(timezone.utc).isoformat(),
+    }
+    if normalized:
+        item["activeOwnerDiscordId"] = normalized[0]["ownerDiscordId"]
+        item["activeCharacterSlug"] = normalized[0]["slug"]
+    _table.put_item(Item=item)
+
+
 def set_guild_active_character(
     guild_id: str | int,
     owner_id: str | int,
     slug: str,
     updated_by: str | int,
 ) -> None:
-    from datetime import datetime, timezone
-
-    _table.put_item(
-        Item={
-            "pk": "GUILDS",
-            "sk": f"GUILDID#{guild_id}",
-            "activeOwnerDiscordId": str(owner_id),
-            "activeCharacterSlug": slug,
-            "updatedByDiscordId": str(updated_by),
-            "updatedAt": datetime.now(timezone.utc).isoformat(),
-        }
+    set_guild_active_characters(
+        guild_id,
+        [{"ownerDiscordId": owner_id, "slug": slug, "displayName": slug}],
+        updated_by,
     )
 
 

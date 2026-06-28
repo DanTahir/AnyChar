@@ -221,6 +221,12 @@ export async function listLinkedGuilds(discordId: string) {
   return items.map((i) => i.guildId as string);
 }
 
+export type ActiveCharacter = {
+  ownerDiscordId: string;
+  slug: string;
+  displayName: string;
+};
+
 export async function setActiveGuildCharacter(
   guildId: string,
   ownerId: string,
@@ -232,9 +238,58 @@ export async function setActiveGuildCharacter(
     sk: `GUILDID#${guildId}`,
     activeOwnerDiscordId: ownerId,
     activeCharacterSlug: slug,
+    activeCharacters: [{ ownerDiscordId: ownerId, slug, displayName: slug }],
     updatedByDiscordId: updatedBy,
     updatedAt: new Date().toISOString(),
   });
+}
+
+export async function setActiveGuildCharacters(
+  guildId: string,
+  characters: ActiveCharacter[],
+  updatedBy: string,
+) {
+  const item: Record<string, unknown> = {
+    pk: "GUILDS",
+    sk: `GUILDID#${guildId}`,
+    activeCharacters: characters,
+    updatedByDiscordId: updatedBy,
+    updatedAt: new Date().toISOString(),
+  };
+  if (characters.length > 0) {
+    item.activeOwnerDiscordId = characters[0].ownerDiscordId;
+    item.activeCharacterSlug = characters[0].slug;
+  }
+  await putItem(item);
+}
+
+export async function getGuildActiveCharacters(
+  guildId: string,
+): Promise<ActiveCharacter[]> {
+  const cfg = await getItem("GUILDS", `GUILDID#${guildId}`);
+  if (!cfg) return [];
+  const list = cfg.activeCharacters;
+  if (Array.isArray(list) && list.length > 0) {
+    return list
+      .map((e) => ({
+        ownerDiscordId: String((e as Record<string, unknown>).ownerDiscordId ?? ""),
+        slug: String((e as Record<string, unknown>).slug ?? ""),
+        displayName: String(
+          (e as Record<string, unknown>).displayName ?? (e as Record<string, unknown>).slug ?? "",
+        ),
+      }))
+      .filter((e) => e.ownerDiscordId && e.slug);
+  }
+  if (cfg.activeOwnerDiscordId && cfg.activeCharacterSlug) {
+    return [
+      {
+        ownerDiscordId: String(cfg.activeOwnerDiscordId),
+        slug: String(cfg.activeCharacterSlug),
+        displayName: String(cfg.activeCharacterSlug),
+      },
+    ];
+  }
+  return [];
 }
 
 export async function listGuildLinkedUsers(guildId: string) {

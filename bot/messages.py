@@ -1,10 +1,28 @@
 from __future__ import annotations
 
 import difflib
+import re
 
 import discord
 
 from discord_images import attachment_note
+
+_CHARACTER_PREFIX_RE = re.compile(r"^\*\*(?P<name>.+?)\*\*\s*", re.DOTALL)
+
+
+def parse_character_prefix(content: str) -> tuple[str | None, str]:
+    """Split a leading ``**Name**`` prefix off a bot message.
+
+    Returns ``(name, body)`` when the message starts with a bold character name,
+    otherwise ``(None, original_content)``.
+    """
+    text = content or ""
+    match = _CHARACTER_PREFIX_RE.match(text)
+    if not match:
+        return None, text.strip()
+    name = match.group("name").strip()
+    body = text[match.end():].strip()
+    return (name or None), body
 
 
 def texts_too_similar(a: str, b: str, threshold: float = 0.9) -> bool:
@@ -17,13 +35,26 @@ def texts_too_similar(a: str, b: str, threshold: float = 0.9) -> bool:
 
 
 def last_bot_message_text(
-    chain: list[discord.Message], bot_user: discord.ClientUser
+    chain: list[discord.Message],
+    bot_user: discord.ClientUser,
+    character_name: str | None = None,
 ) -> str | None:
-    """The text of the most recent message authored by the bot in this reply chain."""
+    """The text of the most recent message authored by the bot in this reply chain.
+
+    When ``character_name`` is given, only consider bot messages whose bold name
+    prefix matches that character, and return the body without the prefix.
+    """
+    target = (character_name or "").strip().lower()
     for msg in reversed(chain):
-        if msg.author == bot_user:
-            text = (msg.content or "").strip()
-            return text or None
+        if msg.author != bot_user:
+            continue
+        name, body = parse_character_prefix(msg.content)
+        if target:
+            if (name or "").strip().lower() != target:
+                continue
+            return body or None
+        text = (msg.content or "").strip()
+        return text or None
     return None
 
 
@@ -90,12 +121,16 @@ def format_message_content(message: discord.Message, bot_user: discord.ClientUse
 
 def author_label(message: discord.Message, bot_user: discord.ClientUser) -> str:
     if message.author == bot_user:
-        return "Character"
+        name, _ = parse_character_prefix(message.content)
+        return name or "Character"
     return getattr(message.author, "display_name", str(message.author))
 
 
 def author_with_id(message: discord.Message, bot_user: discord.ClientUser) -> str:
     if message.author == bot_user:
+        name, _ = parse_character_prefix(message.content)
+        if name:
+            return f"{name} (a character, not a user)"
         return "Character"
     nick = getattr(message.author, "display_name", str(message.author))
     return f"{nick} (user:{message.author.id})"
@@ -103,7 +138,7 @@ def author_with_id(message: discord.Message, bot_user: discord.ClientUser) -> st
 
 def message_body(message: discord.Message, bot_user: discord.ClientUser) -> str:
     if message.author == bot_user:
-        text = message.content.strip()
+        _, text = parse_character_prefix(message.content)
     else:
         text = format_message_content(message, bot_user)
     base = text if text else "[no text content]"
@@ -182,7 +217,8 @@ async def send_chained_replies(
     text: str,
     *,
     mention_author: bool = False,
-) -> None:
+) -> discord.Message:
     prior = origin
     for part in split_for_discord(text):
         prior = await prior.reply(part, mention_author=mention_author)
+    return prior

@@ -9,17 +9,18 @@ from discord import app_commands
 from openai import APIError
 
 from config import SITE_URL, THREAD_MESSAGE_LIMIT, TOKEN
-from guild_nickname import sync_guild_nickname
+from guild_nickname import build_combined_nickname, sync_guild_nickname
 from discord_images import fetch_images_from_messages, fetch_message_image_data_urls
 from dynamo import (
     find_character_by_display_name,
     get_character,
+    get_guild_active_characters,
     get_guild_config,
     get_user,
     increment_thread_count,
     link_guild_to_user,
     list_server_characters,
-    set_guild_active_character,
+    set_guild_active_characters,
 )
 from messages import (
     build_thread_prompt,
@@ -31,13 +32,17 @@ from messages import (
     texts_too_similar,
 )
 from openrouter_client import chat_completion
-from prompt_builder import build_multimodal_user_content, build_system_prompt
+from prompt_builder import (
+    area_context_line,
+    build_multimodal_user_content,
+    build_system_prompt,
+)
 from runtime import (
     RuntimeConfig,
     create_short_term_memory,
     get_thread_root,
     load_memories_for_prompt,
-    resolve_runtime_config,
+    resolve_runtime_configs,
     thread_storage_key,
 )
 from s3_images import fetch_image_bytes, fetch_image_data_url
@@ -85,22 +90,34 @@ async def help_cmd(interaction: discord.Interaction):
     )
 
 
-@client.tree.command(name="character", description="Show the active character for this server")
+@client.tree.command(name="character", description="Show the active character(s) for this server")
 async def character_cmd(interaction: discord.Interaction):
     if not interaction.guild:
         await interaction.response.send_message("Use this in a server.", ephemeral=True)
         return
     cfg = get_guild_config(interaction.guild.id)
-    if not cfg:
+    actives = get_guild_active_characters(cfg)
+    if not actives:
         await interaction.response.send_message(
             f"No character configured. Use /setcharacter or visit {SITE_URL}",
             ephemeral=True,
         )
         return
-    name = cfg.get("activeCharacterSlug", "?")
-    owner = cfg.get("activeOwnerDiscordId", "?")
+    if len(actives) == 1:
+        a = actives[0]
+        await interaction.response.send_message(
+            f"Active character: **{a['displayName']}** (owner user ID: {a['ownerDiscordId']})",
+            ephemeral=True,
+        )
+        return
+    ordinals = ["First", "Second", "Third"]
+    lines = [
+        f"{ordinals[i] if i < len(ordinals) else f'#{i + 1}'}: "
+        f"**{a['displayName']}** (owner user ID: {a['ownerDiscordId']})"
+        for i, a in enumerate(actives)
+    ]
     await interaction.response.send_message(
-        f"Active character: **{name}** (owner user ID: {owner})",
+        "Active characters (reply in order):\n" + "\n".join(lines),
         ephemeral=True,
     )
 
@@ -124,8 +141,37 @@ async def listcharacters_cmd(interaction: discord.Interaction):
     )
 
 
-@client.tree.command(name="setcharacter", description="Set the active character for this server")
-@app_commands.describe(name="Character display name")
+def parse_character_names(raw: str, *, max_names: int = 3) -> list[str]:
+    """Split a "/setcharacter" argument on unescaped ``&`` separators.
+
+    ``\\&`` is treated as a literal ``&`` inside a name. Empty segments are
+    dropped and the result is capped at ``max_names`` entries.
+
+    Example: ``Julie \\& Annie & Jenny`` -> ``["Julie & Annie", "Jenny"]``.
+    """
+    names: list[str] = []
+    current: list[str] = []
+    i = 0
+    while i < len(raw):
+        ch = raw[i]
+        if ch == "\\" and i + 1 < len(raw) and raw[i + 1] == "&":
+            current.append("&")
+            i += 2
+            continue
+        if ch == "&":
+            names.append("".join(current))
+            current = []
+            i += 1
+            continue
+        current.append(ch)
+        i += 1
+    names.append("".join(current))
+    cleaned = [n.strip() for n in names if n.strip()]
+    return cleaned[:max_names]
+
+
+@client.tree.command(name="setcharacter", description="Set the active character(s) for this server")
+@app_commands.describe(name="Character name, or up to 3 joined with & (escape a literal & as \\&)")
 async def setcharacter_cmd(interaction: discord.Interaction, name: str):
     if not interaction.guild:
         await interaction.response.send_message("Use this in a server.", ephemeral=True)
@@ -138,24 +184,53 @@ async def setcharacter_cmd(interaction: discord.Interaction, name: str):
         )
         return
 
-    char = find_character_by_display_name(interaction.guild.id, name)
-    if not char:
+    requested = parse_character_names(name)
+    if not requested:
         await interaction.response.send_message(
-            f"Character '{name}' not found. Use /listcharacters.",
+            "Provide at least one character name.", ephemeral=True
+        )
+        return
+
+    resolved: list[dict] = []
+    missing: list[str] = []
+    for req in requested:
+        char = find_character_by_display_name(interaction.guild.id, req)
+        if not char:
+            missing.append(req)
+            continue
+        owner_id = char.get("ownerDiscordId") or char["sk"].split("#CHAR#")[0].replace(
+            "USERID#", ""
+        )
+        slug = char.get("slug") or char["sk"].split("#CHAR#")[-1]
+        display = char.get("displayName") or slug
+        resolved.append(
+            {"ownerDiscordId": str(owner_id), "slug": slug, "displayName": display}
+        )
+
+    if missing:
+        joined = ", ".join(f"'{m}'" for m in missing)
+        await interaction.response.send_message(
+            f"Character(s) not found: {joined}. Use /listcharacters.",
             ephemeral=True,
         )
         return
 
     link_guild_to_user(interaction.user.id, interaction.guild.id)
-    owner_id = char.get("ownerDiscordId") or char["sk"].split("#CHAR#")[0].replace("USERID#", "")
-    slug = char.get("slug") or char["sk"].split("#CHAR#")[-1]
-    set_guild_active_character(interaction.guild.id, owner_id, slug, interaction.user.id)
+    set_guild_active_characters(interaction.guild.id, resolved, interaction.user.id)
 
-    display = char.get("displayName") or slug
-    await sync_guild_nickname(interaction.guild, display, bot_id=client.user.id)
-    await interaction.response.send_message(
-        f"Active character set to **{display}**.", ephemeral=True
+    displays = [c["displayName"] for c in resolved]
+    await sync_guild_nickname(
+        interaction.guild, build_combined_nickname(displays), bot_id=client.user.id
     )
+    if len(displays) == 1:
+        await interaction.response.send_message(
+            f"Active character set to **{displays[0]}**.", ephemeral=True
+        )
+    else:
+        joined = " & ".join(f"**{d}**" for d in displays)
+        await interaction.response.send_message(
+            f"Active characters set (reply in order): {joined}.", ephemeral=True
+        )
 
 
 @client.tree.command(name="describecharacter", description="Show a character's description and image")
@@ -199,14 +274,15 @@ async def on_ready():
 async def on_guild_join(guild: discord.Guild):
     print(f"Joined guild {guild.id} ({guild.name})")
     cfg = get_guild_config(guild.id)
-    if cfg:
-        owner_id = cfg.get("activeOwnerDiscordId")
-        slug = cfg.get("activeCharacterSlug")
-        if owner_id and slug:
-            char = get_character(owner_id, slug)
-            if char:
-                display = char.get("displayName") or slug
-                await sync_guild_nickname(guild, display, bot_id=client.user.id)
+    actives = get_guild_active_characters(cfg)
+    if actives:
+        displays: list[str] = []
+        for a in actives:
+            char = get_character(a["ownerDiscordId"], a["slug"])
+            displays.append((char.get("displayName") if char else None) or a["displayName"])
+        combined = build_combined_nickname(displays)
+        if combined:
+            await sync_guild_nickname(guild, combined, bot_id=client.user.id)
     channel = guild.system_channel
     if channel:
         try:
@@ -225,11 +301,27 @@ async def is_reply_to_bot(message: discord.Message) -> bool:
     return parent is not None and parent.author == client.user
 
 
+def _char_display(config: RuntimeConfig) -> str:
+    return (
+        config.character.get("displayName")
+        or config.character.get("slug")
+        or "Character"
+    )
+
+
 async def generate_reply(
-    message: discord.Message, config: RuntimeConfig, thread_root: discord.Message
+    message: discord.Message,
+    config: RuntimeConfig,
+    thread_root: discord.Message,
+    all_configs: list[RuntimeConfig] | None = None,
+    index: int = 0,
 ) -> str:
     if is_over_budget(config.owner_user):
         return budget_exceeded_message()
+
+    all_configs = all_configs or [config]
+    other_configs = [c for j, c in enumerate(all_configs) if j != index]
+    names = [_char_display(c) for c in all_configs]
 
     chain = await fetch_reply_chain(message) if message.reference else []
     lt, st = load_memories_for_prompt(
@@ -241,6 +333,11 @@ async def generate_reply(
     )
 
     owner_age18plus = bool(config.owner_user.get("age18plus"))
+    other_characters = [
+        {"name": _char_display(c), "description": c.character.get("description") or ""}
+        for c in other_configs
+    ]
+    area_context = area_context_line(names, index) if len(all_configs) > 1 else None
     system = build_system_prompt(
         config.character,
         config.known_users,
@@ -248,8 +345,10 @@ async def generate_reply(
         st,
         owner_age18plus,
         has_live_conversation=bool(chain),
+        other_characters=other_characters or None,
+        area_context=area_context,
     )
-    char_name = config.character.get("displayName") or config.character.get("slug", "Character")
+    char_name = _char_display(config)
 
     if chain:
         text = build_thread_prompt(chain, message, client.user, char_name)
@@ -261,13 +360,27 @@ async def generate_reply(
         config.character.get("imageContentType"),
     )
 
+    # The speaker is either a human (look up their Known User image) or another
+    # character that just spoke (handled via other_character_images below).
     speaker_img = None
     speaker_id = str(message.author.id)
-    for ku in config.known_users:
-        ku_id = ku.get("knownUserId") or ku["sk"].split("#KNOWN#")[-1]
-        if ku_id == speaker_id and ku.get("imageS3Key"):
-            speaker_img = fetch_image_data_url(ku["imageS3Key"], ku.get("imageContentType"))
-            break
+    if message.author != client.user:
+        for ku in config.known_users:
+            ku_id = ku.get("knownUserId") or ku["sk"].split("#KNOWN#")[-1]
+            if ku_id == speaker_id and ku.get("imageS3Key"):
+                speaker_img = fetch_image_data_url(
+                    ku["imageS3Key"], ku.get("imageContentType")
+                )
+                break
+
+    other_character_images: list[dict] = []
+    for c in other_configs:
+        url = fetch_image_data_url(
+            c.character.get("imageS3Key", ""),
+            c.character.get("imageContentType"),
+        )
+        if url:
+            other_character_images.append({"name": _char_display(c), "url": url})
 
     message_imgs = await fetch_message_image_data_urls(message)
     # Images posted in the messages being replied to (closest reply first) so the
@@ -285,6 +398,7 @@ async def generate_reply(
         speaker_img,
         message_imgs,
         context_imgs,
+        other_character_images=other_character_images,
     )
 
     reply = await chat_completion(
@@ -297,7 +411,7 @@ async def generate_reply(
 
     # Self-repetition guard: if the model echoed its previous reply in this thread
     # almost verbatim, regenerate once with an explicit do-not-repeat instruction.
-    prev_bot_text = last_bot_message_text(chain, client.user)
+    prev_bot_text = last_bot_message_text(chain, client.user, character_name=char_name)
     if prev_bot_text and texts_too_similar(prev_bot_text, reply):
         nudge_text = (
             "Your reply was almost identical to your previous message in this conversation. "
@@ -332,55 +446,65 @@ async def on_message(message: discord.Message):
     if not mentioned and not reply_to_bot:
         return
 
-    config = resolve_runtime_config(message)
-    if not config:
+    configs = resolve_runtime_configs(message)
+    if not configs:
         await message.channel.send(
             f"This server or DM is not configured yet. Visit {SITE_URL} to set up."
         )
         return
 
-    if not config.api_key:
-        await message.channel.send("Character owner has no API key configured.")
-        return
+    multi = len(configs) > 1
 
     if message.guild:
-        char_display = (
-            config.character.get("displayName")
-            or config.character.get("slug")
-            or "Character"
-        )
-        await sync_guild_nickname(message.guild, char_display, bot_id=client.user.id)
+        combined = build_combined_nickname([_char_display(c) for c in configs])
+        if combined:
+            await sync_guild_nickname(message.guild, combined, bot_id=client.user.id)
 
     try:
         root = await get_thread_root(message)
-        storage_key = thread_storage_key(message, config.owner_discord_id)
-        count = increment_thread_count(storage_key, root.id)
-        if count > THREAD_MESSAGE_LIMIT:
-            await message.channel.send("Maximum length reached.")
-            return
+        storage_key = thread_storage_key(message, configs[0].owner_discord_id)
 
-        async with message.channel.typing():
-            reply = await generate_reply(message, config, root)
+        # Each character replies in order: the first to the user, each next one to
+        # the character that just spoke, forming a single linear reply chain.
+        target = message
+        for index, config in enumerate(configs):
+            display = _char_display(config)
 
-        if reply == budget_exceeded_message():
-            await message.channel.send(reply)
-            return
+            if not config.api_key:
+                await message.channel.send(
+                    f"Character owner for {display} has no API key configured."
+                )
+                continue
 
-        await send_chained_replies(message, reply, mention_author=False)
-        increment_thread_count(storage_key, root.id)
+            count = increment_thread_count(storage_key, root.id)
+            if count > THREAD_MESSAGE_LIMIT:
+                await message.channel.send("Maximum length reached.")
+                break
 
-        try:
-            chain = await fetch_reply_chain(message) if message.reference else []
-            await create_short_term_memory(config, root, chain, message, reply)
-        except Exception as e:
-            import traceback
+            async with message.channel.typing():
+                reply = await generate_reply(target, config, root, configs, index)
 
-            print(
-                f"Memory creation error (owner={config.owner_discord_id} "
-                f"slug={config.character_slug} server={config.server_id} "
-                f"has_api_key={bool(config.api_key)}): {e!r}"
-            )
-            traceback.print_exc()
+            if reply == budget_exceeded_message():
+                await message.channel.send(reply)
+                continue
+
+            out = f"**{display}** {reply}" if multi else reply
+            sent = await send_chained_replies(target, out, mention_author=False)
+
+            try:
+                chain = await fetch_reply_chain(target) if target.reference else []
+                await create_short_term_memory(config, root, chain, target, reply)
+            except Exception as e:
+                import traceback
+
+                print(
+                    f"Memory creation error (owner={config.owner_discord_id} "
+                    f"slug={config.character_slug} server={config.server_id} "
+                    f"has_api_key={bool(config.api_key)}): {e!r}"
+                )
+                traceback.print_exc()
+
+            target = sent
     except APIError as e:
         print(f"OpenRouter API error: {e}")
         await message.channel.send("Something went wrong calling the language model.")

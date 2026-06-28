@@ -53,6 +53,38 @@ ANTI_REPETITION_RULE = (
 )
 
 
+def _natural_join(names: list[str]) -> str:
+    names = [n for n in names if n]
+    if not names:
+        return ""
+    if len(names) == 1:
+        return names[0]
+    if len(names) == 2:
+        return f"{names[0]} and {names[1]}"
+    return f"{', '.join(names[:-1])}, and {names[-1]}"
+
+
+def area_context_line(names: list[str], index: int) -> str:
+    """Build the per-turn "you are in the area with..." line for character at
+    position ``index`` within the ordered ``names`` list."""
+    if len(names) <= 1:
+        return ""
+    others = [n for i, n in enumerate(names) if i != index]
+    before = names[:index]
+    after = names[index + 1:]
+
+    sentences = [f"You are in the area with {_natural_join(others)}."]
+    if before:
+        if len(before) == 1:
+            sentences.append(f"{before[0]} responded first.")
+        else:
+            sentences.append(f"{_natural_join(before)} responded before you.")
+    sentences.append("Now you are responding.")
+    if after:
+        sentences.append(f"Then {_natural_join(after)} will respond.")
+    return " ".join(sentences)
+
+
 def build_system_prompt(
     character: dict[str, Any],
     known_users: list[dict[str, Any]],
@@ -60,6 +92,8 @@ def build_system_prompt(
     short_term_memories: list[dict[str, Any]],
     age18plus: bool = False,
     has_live_conversation: bool = False,
+    other_characters: list[dict[str, Any]] | None = None,
+    area_context: str | None = None,
 ) -> str:
     parts: list[str] = []
 
@@ -102,6 +136,29 @@ def build_system_prompt(
     if character.get("description"):
         parts.append(f"Description: {character['description']}")
 
+    if other_characters:
+        parts.append("")
+        parts.append(
+            "Other characters are present with you. Treat each of them as a real person "
+            "you know who is physically here in the scene — you can see their appearance "
+            "and you know who they are. They are not Discord users and have no user ID. "
+            "Each of their messages begins with their name in bold, like \"**Name**\", "
+            "which tells you who is speaking; treat that bold name as the speaker's name and "
+            "do not repeat it back as part of your own reply. Do not prefix your own reply "
+            "with your name or a bold name tag — just write what you say and do."
+        )
+        for oc in other_characters:
+            oc_name = oc.get("name") or "Someone"
+            desc = (oc.get("description") or "").strip()
+            if desc:
+                parts.append(f"- {oc_name}: {desc}")
+            else:
+                parts.append(f"- {oc_name}")
+
+    if area_context:
+        parts.append("")
+        parts.append(area_context)
+
     if known_users:
         parts.append("")
         parts.append("Known Users (people you know):")
@@ -140,6 +197,7 @@ def build_multimodal_user_content(
     speaker_image_url: str | None,
     message_image_urls: list[str] | None = None,
     context_image_urls: list[str] | None = None,
+    other_character_images: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     content: list[dict[str, Any]] = []
 
@@ -167,6 +225,20 @@ def build_multimodal_user_content(
             }
         )
         content.append({"type": "image_url", "image_url": {"url": speaker_image_url}})
+
+    if other_character_images:
+        for oc in other_character_images:
+            url = oc.get("url")
+            if not url:
+                continue
+            oc_name = oc.get("name") or "another character"
+            content.append(
+                {
+                    "type": "text",
+                    "text": f"This is how {oc_name} looks; they are here in the scene with you.",
+                }
+            )
+            content.append({"type": "image_url", "image_url": {"url": url}})
 
     if context_image_urls:
         for index, url in enumerate(context_image_urls, start=1):

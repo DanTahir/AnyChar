@@ -12,6 +12,29 @@ def truncate_nickname(name: str) -> str:
     return trimmed[:DISCORD_NICK_MAX]
 
 
+def build_combined_nickname(names: list[str], *, separator: str = " & ") -> str:
+    """Join character names with ``separator``; if too long for a Discord nickname,
+    repeatedly trim the longest name by one char (min 1 each) until it fits."""
+    parts = [n.strip() for n in names if n and n.strip()]
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return truncate_nickname(parts[0])
+
+    sep_total = len(separator) * (len(parts) - 1)
+    budget = DISCORD_NICK_MAX - sep_total
+    # Each name must keep at least 1 char; if even that can't fit, hard truncate.
+    if budget < len(parts):
+        return truncate_nickname(separator.join(parts))
+
+    while sum(len(p) for p in parts) > budget:
+        longest_idx = max(range(len(parts)), key=lambda i: len(parts[i]))
+        if len(parts[longest_idx]) <= 1:
+            break
+        parts[longest_idx] = parts[longest_idx][:-1]
+    return separator.join(parts)
+
+
 def current_nick(member: discord.Member) -> str:
     return member.nick or member.display_name
 

@@ -8,6 +8,29 @@ export function truncateNickname(name: string): string {
   return trimmed.slice(0, DISCORD_NICK_MAX);
 }
 
+/** Join character names with " & "; if too long for a Discord nickname, trim the
+ * longest name by one char (min 1 each) until it fits. */
+export function buildCombinedNickname(names: string[], separator = " & "): string {
+  const parts = names.map((n) => n.trim()).filter(Boolean);
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return truncateNickname(parts[0]);
+
+  const sepTotal = separator.length * (parts.length - 1);
+  const budget = DISCORD_NICK_MAX - sepTotal;
+  if (budget < parts.length) return truncateNickname(parts.join(separator));
+
+  const total = () => parts.reduce((sum, p) => sum + p.length, 0);
+  while (total() > budget) {
+    let longestIdx = 0;
+    for (let i = 1; i < parts.length; i++) {
+      if (parts[i].length > parts[longestIdx].length) longestIdx = i;
+    }
+    if (parts[longestIdx].length <= 1) break;
+    parts[longestIdx] = parts[longestIdx].slice(0, -1);
+  }
+  return parts.join(separator);
+}
+
 /** Set the bot's nickname in a guild via Discord REST API. */
 export async function syncBotGuildNickname(
   guildId: string,

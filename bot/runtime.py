@@ -9,6 +9,7 @@ import discord
 from dynamo import (
     delete_memory_item,
     get_character,
+    get_guild_active_characters,
     get_guild_config,
     get_user,
     get_user_api_key,
@@ -17,7 +18,7 @@ from dynamo import (
     query_memories,
     token_estimate,
 )
-from messages import get_thread_root, texts_too_similar
+from messages import get_thread_root, parse_character_prefix, texts_too_similar
 from openrouter_client import chat_completion
 
 
@@ -68,35 +69,64 @@ def resolve_runtime_config(message: discord.Message) -> RuntimeConfig | None:
             owner_user=user,
         )
 
-    if not message.guild:
-        return None
+    configs = resolve_runtime_configs(message)
+    return configs[0] if configs else None
 
-    guild_cfg = get_guild_config(message.guild.id)
-    if not guild_cfg:
-        return None
 
-    owner_id = guild_cfg.get("activeOwnerDiscordId")
-    slug = guild_cfg.get("activeCharacterSlug")
-    if not owner_id or not slug:
-        return None
-
+def _build_guild_config(
+    owner_id: str, slug: str, server_id: str
+) -> RuntimeConfig | None:
     owner = get_user(owner_id)
     if not owner or not owner.get("approved"):
         return None
-
     char = get_character(owner_id, slug)
     if not char:
         return None
-
     return RuntimeConfig(
         owner_discord_id=str(owner_id),
         character_slug=slug,
         character=char,
         known_users=list_known_users(owner_id, slug),
         api_key=get_user_api_key(owner_id),
-        server_id=str(message.guild.id),
+        server_id=server_id,
         owner_user=owner,
     )
+
+
+def resolve_runtime_configs(message: discord.Message) -> list[RuntimeConfig]:
+    """Resolve the ordered list of active character configs for this message.
+
+    DMs always resolve to a single character. Guilds may have up to 3 ordered
+    active characters that respond in sequence.
+    """
+    is_dm = isinstance(message.channel, discord.DMChannel)
+    if is_dm:
+        single = resolve_runtime_config(message)
+        return [single] if single else []
+
+    if not message.guild:
+        return []
+
+    guild_cfg = get_guild_config(message.guild.id)
+    if not guild_cfg:
+        return []
+
+    server_id = str(message.guild.id)
+    configs: list[RuntimeConfig] = []
+    seen: set[str] = set()
+    for entry in get_guild_active_characters(guild_cfg):
+        owner_id = entry.get("ownerDiscordId")
+        slug = entry.get("slug")
+        if not owner_id or not slug:
+            continue
+        key = f"{owner_id}:{slug}"
+        if key in seen:
+            continue
+        seen.add(key)
+        cfg = _build_guild_config(str(owner_id), str(slug), server_id)
+        if cfg:
+            configs.append(cfg)
+    return configs
 
 
 def thread_storage_key(message: discord.Message, owner_id: str) -> str:
@@ -192,6 +222,14 @@ async def create_short_term_memory(
     lines = []
     for msg in chain + [current]:
         if msg.author.bot:
+            # Other characters' messages carry a "**Name**" prefix; attribute them by
+            # name so this character remembers what the others said. Unprefixed bot
+            # messages (single-character mode) are represented via bot_reply only.
+            other_name, body = parse_character_prefix(msg.content)
+            if other_name:
+                lines.append(
+                    f"{other_name} (a character, not a user): {body or '[no text]'}"
+                )
             continue
         nick = getattr(msg.author, "display_name", str(msg.author))
         lines.append(f"{nick} (user:{msg.author.id}): {msg.content or '[no text]'}")
