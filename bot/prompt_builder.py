@@ -46,6 +46,14 @@ ANTI_REPETITION_RULE = (
     "interaction instead. Always respond to what the other person just said and did."
 )
 
+CREATIVITY_RULE = (
+    "Write with variety and inventiveness. Vary sentence rhythm, word choice, and emotional "
+    "texture from reply to reply. Use specific sensory details, unexpected beats, and fresh "
+    "angles — not generic filler or stock phrases. Let your character's personality show through "
+    "how they speak and act, not just what they say. Avoid formulaic patterns and predictable "
+    "responses; each reply should feel distinct and alive."
+)
+
 
 def _natural_join(names: list[str]) -> str:
     names = [n for n in names if n]
@@ -178,6 +186,7 @@ def build_system_prompt(
     parts.append(f"\nPlatform content policy: {content_policy}")
     parts.append(f"\nRoleplay rules: {ROLEPLAY_RULES}")
     parts.append(f"\nKeep the scene moving: {ANTI_REPETITION_RULE}")
+    parts.append(f"\nCreativity: {CREATIVITY_RULE}")
 
     style = character.get("replyStyle") or "semi-lit"
     words = REPLY_STYLE_WORDS.get(style, 150)

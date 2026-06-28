@@ -11,12 +11,9 @@ AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE", "AnyChar")
 S3_BUCKET = os.getenv("S3_BUCKET", "")
 TOKEN = os.getenv("TOKEN", "")
-OPENROUTER_TEXT_MODEL = os.getenv(
-    "OPENROUTER_TEXT_MODEL", "sao10k/l3.3-euryale-70b"
-)
-OPENROUTER_VISION_MODEL = os.getenv(
-    "OPENROUTER_VISION_MODEL", "meta-llama/llama-4-maverick"
-)
+_MAVERICK = "meta-llama/llama-4-maverick"
+OPENROUTER_TEXT_MODEL = os.getenv("OPENROUTER_TEXT_MODEL", _MAVERICK)
+OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", _MAVERICK)
 OPENROUTER_MEMORY_MODEL = (
     os.getenv("OPENROUTER_MEMORY_MODEL", "") or OPENROUTER_TEXT_MODEL
 )
