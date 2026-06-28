@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { replyStyles } from "@/lib/schemas/character";
@@ -365,6 +366,12 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
             <option value="medium">medium — Average cost</option>
             <option value="long">long — More expensive</option>
           </select>
+          <Link
+            href={`/dashboard/characters/${slug}/memories`}
+            className="link-accent mt-2 inline-block text-sm"
+          >
+            View memories
+          </Link>
         </FieldShell>
       </div>
 

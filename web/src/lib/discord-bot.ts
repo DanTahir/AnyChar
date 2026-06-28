@@ -57,6 +57,7 @@ export async function syncBotGuildNickname(
 
 type UsernameCacheEntry = { name: string | null; expires: number };
 const usernameCache = new Map<string, UsernameCacheEntry>();
+const guildNameCache = new Map<string, UsernameCacheEntry>();
 const USERNAME_TTL_MS = 60 * 60 * 1000;
 
 /**
@@ -88,6 +89,33 @@ export async function fetchDiscordDisplayName(userId: string): Promise<string | 
   }
 
   usernameCache.set(userId, { name, expires: Date.now() + USERNAME_TTL_MS });
+  return name;
+}
+
+/** Resolve a Discord guild name via the bot token. Returns null on failure. */
+export async function fetchGuildName(guildId: string): Promise<string | null> {
+  const token = config.discordBotToken;
+  if (!token || !/^\d+$/.test(guildId)) return null;
+
+  const cached = guildNameCache.get(guildId);
+  if (cached && cached.expires > Date.now()) return cached.name;
+
+  let name: string | null = null;
+  try {
+    const res = await fetch(`https://discord.com/api/v10/guilds/${guildId}`, {
+      headers: { Authorization: `Bot ${token}` },
+    });
+    if (res.ok) {
+      const g = (await res.json()) as { name?: string };
+      name = g.name ?? null;
+    } else {
+      console.error(`Discord guild lookup failed for ${guildId}: ${res.status}`);
+    }
+  } catch (e) {
+    console.error(`Discord guild lookup error for ${guildId}:`, e);
+  }
+
+  guildNameCache.set(guildId, { name, expires: Date.now() + USERNAME_TTL_MS });
   return name;
 }
 
