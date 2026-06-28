@@ -261,3 +261,75 @@ def update_usage(discord_id: str | int, input_tokens: int, output_tokens: int) -
 
 def token_estimate(text: str) -> int:
     return max(1, math.ceil(len(text) / 4))
+
+
+def msgimg_sk(guild_or_dm_key: str, message_id: str | int) -> str:
+    return f"{guild_or_dm_key}#MSGIMG#{message_id}"
+
+
+def get_message_image_index(
+    guild_or_dm_key: str, message_id: str | int
+) -> dict[str, Any] | None:
+    resp = _table.get_item(
+        Key={"pk": "GUILDS", "sk": msgimg_sk(guild_or_dm_key, message_id)}
+    )
+    return resp.get("Item")
+
+
+def put_message_image_index(
+    guild_or_dm_key: str,
+    message_id: str | int,
+    *,
+    descriptions: list[str],
+    channel_id: str,
+    image_count: int,
+    indexed_by_owner_id: str,
+) -> None:
+    from datetime import datetime, timezone
+
+    _table.put_item(
+        Item={
+            "pk": "GUILDS",
+            "sk": msgimg_sk(guild_or_dm_key, message_id),
+            "descriptions": descriptions,
+            "messageId": str(message_id),
+            "channelId": channel_id,
+            "imageCount": image_count,
+            "indexedByOwnerId": indexed_by_owner_id,
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+
+
+def update_character_fields(
+    owner_id: str | int, slug: str, updates: dict[str, Any]
+) -> None:
+    sk = _char_sk(owner_id, slug)
+    update_item_fields("USERS", sk, updates)
+
+
+def update_item_fields(pk: str, sk: str, updates: dict[str, Any]) -> None:
+    names: dict[str, str] = {}
+    values: dict[str, Any] = {}
+    parts: list[str] = []
+    for i, (key, val) in enumerate(updates.items()):
+        nk = f"#k{i}"
+        vk = f":v{i}"
+        names[nk] = key
+        values[vk] = val
+        parts.append(f"{nk} = {vk}")
+    _table.update_item(
+        Key={"pk": pk, "sk": sk},
+        UpdateExpression="SET " + ", ".join(parts),
+        ExpressionAttributeNames=names,
+        ExpressionAttributeValues=values,
+    )
+
+
+def query_approved_users() -> list[dict[str, Any]]:
+    resp = _table.query(
+        IndexName="GSI1",
+        KeyConditionExpression=Key("gsi1pk").eq("APPROVAL#approved"),
+    )
+    return resp.get("Items", [])
+

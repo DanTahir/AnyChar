@@ -116,7 +116,7 @@ function ImageUploadField({
             e.target.value = "";
           }}
         />
-        {uploading ? "Uploading…" : hasImage ? "Replace image" : "Upload image"}
+        {uploading ? "Generating appearance…" : hasImage ? "Replace image" : "Upload image"}
       </label>
       <p className="text-xs text-purple-400/50">JPEG, PNG, WebP, or GIF · max 2MB</p>
       {message && (

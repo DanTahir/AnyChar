@@ -73,3 +73,7 @@ def attachment_note(message: discord.Message) -> str:
     if count == 1:
         return " [attached 1 image]"
     return f" [attached {count} images]"
+
+
+def message_has_images(message: discord.Message) -> bool:
+    return any(_is_image_attachment(a) for a in message.attachments)

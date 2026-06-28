@@ -19,6 +19,7 @@ from dynamo import (
     token_estimate,
 )
 from messages import get_thread_root, parse_character_prefix, texts_too_similar
+from thread_images import format_image_descriptions
 from openrouter_client import chat_completion
 
 
@@ -208,6 +209,7 @@ async def create_short_term_memory(
     chain: list[discord.Message],
     current: discord.Message,
     bot_reply: str,
+    image_descriptions: dict[int, list[str]] | None = None,
 ) -> None:
     owner_id = config.owner_discord_id
     slug = config.character_slug
@@ -222,9 +224,6 @@ async def create_short_term_memory(
     lines = []
     for msg in chain + [current]:
         if msg.author.bot:
-            # Other characters' messages carry a "**Name**" prefix; attribute them by
-            # name so this character remembers what the others said. Unprefixed bot
-            # messages (single-character mode) are represented via bot_reply only.
             other_name, body = parse_character_prefix(msg.content)
             if other_name:
                 lines.append(
@@ -232,7 +231,11 @@ async def create_short_term_memory(
                 )
             continue
         nick = getattr(msg.author, "display_name", str(msg.author))
-        lines.append(f"{nick} (user:{msg.author.id}): {msg.content or '[no text]'}")
+        text = msg.content or "[no text]"
+        descs = (image_descriptions or {}).get(msg.id)
+        if descs:
+            text += format_image_descriptions(descs)
+        lines.append(f"{nick} (user:{msg.author.id}): {text}")
     lines.append(f"{char_name} (the character, not a user): {bot_reply}")
     thread_text = "\n".join(lines)
 

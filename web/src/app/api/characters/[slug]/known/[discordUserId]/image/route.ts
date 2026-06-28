@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
+import {
+  bufferToDataUrl,
+  describeKnownUserPortrait,
+} from "@/lib/appearance";
 import { auth } from "@/lib/auth";
-import { getItem, knownSk, putItem } from "@/lib/dynamo";
+import { getItem, knownSk, putItem, userSk } from "@/lib/dynamo";
 import {
   extForType,
   fetchImage,
@@ -54,9 +58,21 @@ export async function POST(req: Request, { params }: Params) {
     const err = validateImage(file);
     if (err) return NextResponse.json({ error: err }, { status: 400 });
 
+    const userRecord = await getItem("USERS", userSk(s.user.id));
+    const encKey = userRecord?.openRouterApiKey as string | undefined;
+    if (!encKey) {
+      return NextResponse.json({ error: "No API key configured" }, { status: 400 });
+    }
+
+    const buf = Buffer.from(await file.arrayBuffer());
+    const dataUrl = bufferToDataUrl(buf, file.type);
+    const appearance = await describeKnownUserPortrait(s.user.id, encKey, dataUrl);
+    if (!appearance) {
+      return NextResponse.json({ error: "Appearance generation failed" }, { status: 502 });
+    }
+
     const ext = extForType(file.type);
     const key = knownUserImageKey(s.user.id, slug, discordUserId, ext);
-    const buf = Buffer.from(await file.arrayBuffer());
     await uploadImage(key, buf, file.type);
 
     const existing = await getItem("USERS", knownSk(s.user.id, slug, discordUserId));
@@ -67,6 +83,7 @@ export async function POST(req: Request, { params }: Params) {
       content: existing?.content ?? "",
       imageS3Key: key,
       imageContentType: file.type,
+      appearance,
     });
 
     return NextResponse.json({ ok: true, key });

@@ -10,7 +10,7 @@ from openai import APIError
 
 from config import SITE_URL, THREAD_MESSAGE_LIMIT, TOKEN
 from guild_nickname import build_combined_nickname, sync_guild_nickname
-from discord_images import fetch_images_from_messages, fetch_message_image_data_urls
+from appearance import ensure_character_appearance, ensure_known_user_appearance
 from dynamo import (
     find_character_by_display_name,
     get_character,
@@ -34,7 +34,6 @@ from messages import (
 from openrouter_client import chat_completion
 from prompt_builder import (
     area_context_line,
-    build_multimodal_user_content,
     build_system_prompt,
 )
 from runtime import (
@@ -45,7 +44,8 @@ from runtime import (
     resolve_runtime_configs,
     thread_storage_key,
 )
-from s3_images import fetch_image_bytes, fetch_image_data_url
+from s3_images import fetch_image_bytes
+from thread_images import index_thread_images, load_image_descriptions
 from usage import budget_exceeded_message, is_over_budget
 
 intents = discord.Intents.default()
@@ -315,6 +315,9 @@ async def generate_reply(
     thread_root: discord.Message,
     all_configs: list[RuntimeConfig] | None = None,
     index: int = 0,
+    *,
+    chain: list[discord.Message] | None = None,
+    image_descriptions: dict[int, list[str]] | None = None,
 ) -> str:
     if is_over_budget(config.owner_user):
         return budget_exceeded_message()
@@ -323,7 +326,9 @@ async def generate_reply(
     other_configs = [c for j, c in enumerate(all_configs) if j != index]
     names = [_char_display(c) for c in all_configs]
 
-    chain = await fetch_reply_chain(message) if message.reference else []
+    chain = chain if chain is not None else (
+        await fetch_reply_chain(message) if message.reference else []
+    )
     lt, st = load_memories_for_prompt(
         config.owner_discord_id,
         config.character_slug,
@@ -332,15 +337,32 @@ async def generate_reply(
         message,
     )
 
+    character = await ensure_character_appearance(
+        config.character, config.owner_discord_id, config.api_key
+    )
+    known_users = list(config.known_users)
+    for i, ku in enumerate(known_users):
+        known_users[i] = await ensure_known_user_appearance(
+            ku, config.owner_discord_id, config.character_slug, config.api_key
+        )
+
     owner_age18plus = bool(config.owner_user.get("age18plus"))
-    other_characters = [
-        {"name": _char_display(c), "description": c.character.get("description") or ""}
-        for c in other_configs
-    ]
+    other_characters = []
+    for c in other_configs:
+        oc = await ensure_character_appearance(
+            c.character, c.owner_discord_id, c.api_key
+        )
+        other_characters.append(
+            {
+                "name": _char_display(c),
+                "description": oc.get("description") or "",
+                "appearance": oc.get("appearance") or "",
+            }
+        )
     area_context = area_context_line(names, index) if len(all_configs) > 1 else None
     system = build_system_prompt(
-        config.character,
-        config.known_users,
+        character,
+        known_users,
         lt,
         st,
         owner_age18plus,
@@ -350,63 +372,25 @@ async def generate_reply(
     )
     char_name = _char_display(config)
 
+    img_desc = image_descriptions or {}
     if chain:
-        text = build_thread_prompt(chain, message, client.user, char_name)
-    else:
-        text = single_message_prompt(message, client.user)
-
-    char_img = fetch_image_data_url(
-        config.character.get("imageS3Key", ""),
-        config.character.get("imageContentType"),
-    )
-
-    # The speaker is either a human (look up their Known User image) or another
-    # character that just spoke (handled via other_character_images below).
-    speaker_img = None
-    speaker_id = str(message.author.id)
-    if message.author != client.user:
-        for ku in config.known_users:
-            ku_id = ku.get("knownUserId") or ku["sk"].split("#KNOWN#")[-1]
-            if ku_id == speaker_id and ku.get("imageS3Key"):
-                speaker_img = fetch_image_data_url(
-                    ku["imageS3Key"], ku.get("imageContentType")
-                )
-                break
-
-    other_character_images: list[dict] = []
-    for c in other_configs:
-        url = fetch_image_data_url(
-            c.character.get("imageS3Key", ""),
-            c.character.get("imageContentType"),
+        text = build_thread_prompt(
+            chain,
+            message,
+            client.user,
+            char_name,
+            known_users,
+            img_desc,
         )
-        if url:
-            other_character_images.append({"name": _char_display(c), "url": url})
-
-    message_imgs = await fetch_message_image_data_urls(message)
-    # Images posted in the messages being replied to (closest reply first) so the
-    # character can actually see an image when asked about it in a reply.
-    context_imgs = (
-        await fetch_images_from_messages(list(reversed(chain))) if chain else []
-    )
-
-    user_content = build_multimodal_user_content(
-        text,
-        config.character,
-        config.known_users,
-        speaker_id,
-        char_img,
-        speaker_img,
-        message_imgs,
-        context_imgs,
-        other_character_images=other_character_images,
-    )
+    else:
+        text = single_message_prompt(message, client.user, known_users, img_desc)
 
     reply = await chat_completion(
         api_key=config.api_key,
         owner_discord_id=config.owner_discord_id,
         system=system,
-        user_content=user_content,
-        use_vision=True,
+        user_content=text,
+        use_vision=False,
     )
 
     # Self-repetition guard: if the model echoed its previous reply in this thread
@@ -418,18 +402,13 @@ async def generate_reply(
             "Do not repeat yourself or restate the same request. Respond to what was just "
             "said, take a clearly different action, and move the scene forward."
         )
-        if isinstance(user_content, list):
-            retry_content: str | list[dict] = user_content + [
-                {"type": "text", "text": nudge_text}
-            ]
-        else:
-            retry_content = f"{user_content}\n\n{nudge_text}"
+        retry_content = f"{text}\n\n{nudge_text}"
         reply = await chat_completion(
             api_key=config.api_key,
             owner_discord_id=config.owner_discord_id,
             system=system,
             user_content=retry_content,
-            use_vision=True,
+            use_vision=False,
         )
 
     return reply
@@ -463,6 +442,25 @@ async def on_message(message: discord.Message):
     try:
         root = await get_thread_root(message)
         storage_key = thread_storage_key(message, configs[0].owner_discord_id)
+        chain = await fetch_reply_chain(message) if message.reference else []
+
+        first = configs[0]
+        if first.api_key:
+            try:
+                await index_thread_images(
+                    message,
+                    chain,
+                    guild_or_dm_key=storage_key,
+                    api_key=first.api_key,
+                    owner_discord_id=first.owner_discord_id,
+                )
+            except Exception as e:
+                import traceback
+
+                print(f"Thread image indexing error: {e!r}")
+                traceback.print_exc()
+
+        image_descriptions = load_image_descriptions(storage_key, chain + [message])
 
         # Each character replies in order: the first to the user, each next one to
         # the character that just spoke, forming a single linear reply chain.
@@ -482,7 +480,25 @@ async def on_message(message: discord.Message):
                 break
 
             async with message.channel.typing():
-                reply = await generate_reply(target, config, root, configs, index)
+                target_chain = (
+                    chain
+                    if target is message
+                    else (
+                        await fetch_reply_chain(target) if target.reference else []
+                    )
+                )
+                target_img_desc = load_image_descriptions(
+                    storage_key, target_chain + [target]
+                )
+                reply = await generate_reply(
+                    target,
+                    config,
+                    root,
+                    configs,
+                    index,
+                    chain=target_chain,
+                    image_descriptions=target_img_desc,
+                )
 
             if reply == budget_exceeded_message():
                 await message.channel.send(reply)
@@ -492,8 +508,24 @@ async def on_message(message: discord.Message):
             sent = await send_chained_replies(target, out, mention_author=False)
 
             try:
-                chain = await fetch_reply_chain(target) if target.reference else []
-                await create_short_term_memory(config, root, chain, target, reply)
+                target_chain = (
+                    chain
+                    if target is message
+                    else (
+                        await fetch_reply_chain(target) if target.reference else []
+                    )
+                )
+                target_img_desc = load_image_descriptions(
+                    storage_key, target_chain + [target]
+                )
+                await create_short_term_memory(
+                    config,
+                    root,
+                    target_chain,
+                    target,
+                    reply,
+                    image_descriptions=target_img_desc,
+                )
             except Exception as e:
                 import traceback
 

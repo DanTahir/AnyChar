@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import difflib
 import re
+from typing import Any
 
 import discord
 
 from discord_images import attachment_note
+from thread_images import format_image_descriptions
 
 _CHARACTER_PREFIX_RE = re.compile(r"^\*\*(?P<name>.+?)\*\*\s*", re.DOTALL)
 
@@ -126,24 +128,58 @@ def author_label(message: discord.Message, bot_user: discord.ClientUser) -> str:
     return getattr(message.author, "display_name", str(message.author))
 
 
-def author_with_id(message: discord.Message, bot_user: discord.ClientUser) -> str:
+def _known_user_for_speaker(
+    message: discord.Message,
+    bot_user: discord.ClientUser,
+    known_users: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    if not known_users or message.author == bot_user:
+        return None
+    speaker_id = str(message.author.id)
+    for ku in known_users:
+        ku_id = ku.get("knownUserId") or ku["sk"].split("#KNOWN#")[-1]
+        if ku_id == speaker_id:
+            return ku
+    return None
+
+
+def author_with_id(
+    message: discord.Message,
+    bot_user: discord.ClientUser,
+    known_users: list[dict[str, Any]] | None = None,
+) -> str:
     if message.author == bot_user:
         name, _ = parse_character_prefix(message.content)
         if name:
             return f"{name} (a character, not a user)"
         return "Character"
     nick = getattr(message.author, "display_name", str(message.author))
-    return f"{nick} (user:{message.author.id})"
+    base = f"{nick} (user:{message.author.id})"
+    ku = _known_user_for_speaker(message, bot_user, known_users)
+    if ku and ku.get("appearance"):
+        return f"{base} {ku['appearance']}"
+    return base
 
 
-def message_body(message: discord.Message, bot_user: discord.ClientUser) -> str:
+def message_body(
+    message: discord.Message,
+    bot_user: discord.ClientUser,
+    image_descriptions: dict[int, list[str]] | None = None,
+) -> str:
     if message.author == bot_user:
         _, text = parse_character_prefix(message.content)
     else:
         text = format_message_content(message, bot_user)
     base = text if text else "[no text content]"
-    note = attachment_note(message)
-    return base + note if note else base
+
+    descs = (image_descriptions or {}).get(message.id)
+    if descs:
+        base += format_image_descriptions(descs)
+    else:
+        note = attachment_note(message)
+        if note:
+            base += note
+    return base
 
 
 def build_thread_prompt(
@@ -151,16 +187,27 @@ def build_thread_prompt(
     current: discord.Message,
     bot_user: discord.ClientUser,
     character_name: str,
+    known_users: list[dict[str, Any]] | None = None,
+    image_descriptions: dict[int, list[str]] | None = None,
 ) -> str:
     parts: list[str] = []
+    ku = _known_user_for_speaker(current, bot_user, known_users)
+    if ku and ku.get("appearance") and ku.get("content"):
+        parts.append(
+            "If the speaking user's appearance below contradicts their Known User profile, "
+            "their profile takes precedence."
+        )
     if chain:
         parts.append("Earlier messages in this reply thread (oldest first, for context only):")
         for index, msg in enumerate(chain, start=1):
-            parts.append(f"{index}. {author_with_id(msg, bot_user)}: {message_body(msg, bot_user)}")
+            parts.append(
+                f"{index}. {author_with_id(msg, bot_user, known_users)}: "
+                f"{message_body(msg, bot_user, image_descriptions)}"
+            )
         parts.append("")
     parts.append(
-        f"Message to respond to ({author_with_id(current, bot_user)}): "
-        f"{message_body(current, bot_user)}"
+        f"Message to respond to ({author_with_id(current, bot_user, known_users)}): "
+        f"{message_body(current, bot_user, image_descriptions)}"
     )
     parts.append("")
     parts.append(
@@ -170,19 +217,36 @@ def build_thread_prompt(
     return "\n".join(parts)
 
 
-def single_message_prompt(message: discord.Message, bot_user: discord.ClientUser) -> str:
-    body = message_body(message, bot_user)
+def single_message_prompt(
+    message: discord.Message,
+    bot_user: discord.ClientUser,
+    known_users: list[dict[str, Any]] | None = None,
+    image_descriptions: dict[int, list[str]] | None = None,
+) -> str:
+    body = message_body(message, bot_user, image_descriptions)
     nick = getattr(message.author, "display_name", str(message.author))
     text_only = (
         message.content.strip()
         if message.author == bot_user
         else format_message_content(message, bot_user)
     )
-    has_images = bool(attachment_note(message))
+    has_images = bool(
+        (image_descriptions or {}).get(message.id)
+        or attachment_note(message)
+    )
+    author = author_with_id(message, bot_user, known_users)
+    ku = _known_user_for_speaker(message, bot_user, known_users)
+    precedence = ""
+    if ku and ku.get("appearance") and ku.get("content"):
+        precedence = (
+            "If their appearance contradicts their Known User profile, their profile "
+            "takes precedence. "
+        )
 
     if not text_only and has_images:
         return (
-            f"{nick} (user:{message.author.id}) sent an image. "
+            f"{author} sent an image. {precedence}"
+            f"{message_body(message, bot_user, image_descriptions)} "
             "Respond in character to what they sent."
         )
     if not text_only:
@@ -190,7 +254,9 @@ def single_message_prompt(message: discord.Message, bot_user: discord.ClientUser
             f"{nick} (user:{message.author.id}) @ mentioned you with no other message. "
             "Greet them in character."
         )
-    return f"{author_with_id(message, bot_user)}: {body}"
+    if precedence:
+        return f"{precedence}{author}: {body}"
+    return f"{author}: {body}"
 
 
 def split_for_discord(text: str, limit: int = 2000) -> list[str]:

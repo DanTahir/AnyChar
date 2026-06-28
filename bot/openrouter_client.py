@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from openai import AsyncOpenAI, APIError
+from openai import AsyncOpenAI
 
-from config import OPENROUTER_MEMORY_MODEL, OPENROUTER_MODEL
+from config import (
+    OPENROUTER_MEMORY_MODEL,
+    OPENROUTER_TEXT_MODEL,
+    OPENROUTER_VISION_MODEL,
+)
 from dynamo import get_user, update_usage
 from usage import is_over_budget
 
@@ -15,11 +19,13 @@ async def chat_completion(
     owner_discord_id: str,
     system: str,
     user_content: str | list[dict[str, Any]],
-    use_vision: bool = True,
+    use_vision: bool = False,
     model: str | None = None,
+    max_tokens: int = 4000,
+    charge_usage: bool = True,
 ) -> str:
     user = get_user(owner_discord_id)
-    if is_over_budget(user):
+    if charge_usage and is_over_budget(user):
         from usage import budget_exceeded_message
 
         return budget_exceeded_message()
@@ -28,19 +34,24 @@ async def chat_completion(
         raise ValueError("No OpenRouter API key for user")
 
     client = AsyncOpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
-    chosen = model or (OPENROUTER_MODEL if use_vision else OPENROUTER_MEMORY_MODEL)
+    if model:
+        chosen = model
+    elif use_vision:
+        chosen = OPENROUTER_VISION_MODEL
+    else:
+        chosen = OPENROUTER_MEMORY_MODEL or OPENROUTER_TEXT_MODEL
 
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
     messages.append({"role": "user", "content": user_content})
 
     response = await client.chat.completions.create(
         model=chosen,
-        max_tokens=4000,
+        max_tokens=max_tokens,
         messages=messages,
     )
 
     usage = response.usage
-    if usage:
+    if usage and charge_usage:
         update_usage(
             owner_discord_id,
             int(usage.prompt_tokens or 0),

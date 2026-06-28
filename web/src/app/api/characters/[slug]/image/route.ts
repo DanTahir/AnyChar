@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
+import {
+  bufferToDataUrl,
+  describeCharacterPortrait,
+} from "@/lib/appearance";
 import { auth } from "@/lib/auth";
-import { charSk, updateItem } from "@/lib/dynamo";
+import { charSk, getItem, updateItem, userSk } from "@/lib/dynamo";
 import {
   characterImageKey,
   extForType,
@@ -51,16 +55,28 @@ export async function POST(req: Request, { params }: Params) {
     const err = validateImage(file);
     if (err) return NextResponse.json({ error: err }, { status: 400 });
 
+    const userRecord = await getItem("USERS", userSk(s.user.id));
+    const encKey = userRecord?.openRouterApiKey as string | undefined;
+    if (!encKey) {
+      return NextResponse.json({ error: "No API key configured" }, { status: 400 });
+    }
+
+    const buf = Buffer.from(await file.arrayBuffer());
+    const dataUrl = bufferToDataUrl(buf, file.type);
+    const appearance = await describeCharacterPortrait(s.user.id, encKey, dataUrl);
+    if (!appearance) {
+      return NextResponse.json({ error: "Appearance generation failed" }, { status: 502 });
+    }
+
     const ext = extForType(file.type);
     const key = characterImageKey(s.user.id, slug, ext);
-    const buf = Buffer.from(await file.arrayBuffer());
     await uploadImage(key, buf, file.type);
 
     await updateItem(
       "USERS",
       charSk(s.user.id, slug),
-      "SET imageS3Key = :k, imageContentType = :t",
-      { ":k": key, ":t": file.type },
+      "SET imageS3Key = :k, imageContentType = :t, appearance = :a",
+      { ":k": key, ":t": file.type, ":a": appearance },
     );
 
     return NextResponse.json({ ok: true, key });
