@@ -271,6 +271,13 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
       <div>
         <h1 className="text-2xl font-bold">Edit {character.displayName}</h1>
         <p className="mt-1 text-sm text-purple-300/70">Changes save automatically.</p>
+        <Link
+          href={`/dashboard/characters/${slug}/memories`}
+          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-purple-700/60 bg-purple-950/50 px-4 py-2 text-sm font-medium text-purple-100 shadow-sm shadow-purple-900/30 transition hover:border-purple-500 hover:bg-purple-900/50 hover:text-white"
+        >
+          View memories
+          <span aria-hidden="true" className="text-purple-400">→</span>
+        </Link>
       </div>
       {error && <p className="text-red-400">{error}</p>}
 
@@ -366,12 +373,6 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
             <option value="medium">medium — Average cost</option>
             <option value="long">long — More expensive</option>
           </select>
-          <Link
-            href={`/dashboard/characters/${slug}/memories`}
-            className="link-accent mt-2 inline-block text-sm"
-          >
-            View memories
-          </Link>
         </FieldShell>
       </div>
 
