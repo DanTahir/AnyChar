@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, RateLimitError
 
 from config import (
     OPENROUTER_MEMORY_MODEL,
@@ -11,6 +12,22 @@ from config import (
 )
 from dynamo import get_user, update_usage
 from usage import is_over_budget
+
+_MAX_RETRIES = 3
+
+
+def _retry_after_seconds(exc: RateLimitError) -> float:
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        meta = body.get("error", {}).get("metadata", {})
+        if isinstance(meta, dict):
+            raw = meta.get("retry_after_seconds")
+            if raw is not None:
+                try:
+                    return max(1.0, float(raw))
+                except (TypeError, ValueError):
+                    pass
+    return 10.0
 
 
 async def chat_completion(
@@ -44,19 +61,29 @@ async def chat_completion(
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
     messages.append({"role": "user", "content": user_content})
 
-    response = await client.chat.completions.create(
-        model=chosen,
-        max_tokens=max_tokens,
-        messages=messages,
-    )
+    last_exc: RateLimitError | None = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            response = await client.chat.completions.create(
+                model=chosen,
+                max_tokens=max_tokens,
+                messages=messages,
+            )
+            usage = response.usage
+            if usage and charge_usage:
+                update_usage(
+                    owner_discord_id,
+                    int(usage.prompt_tokens or 0),
+                    int(usage.completion_tokens or 0),
+                )
+            content = response.choices[0].message.content
+            return (content or "").strip()
+        except RateLimitError as exc:
+            last_exc = exc
+            if attempt + 1 >= _MAX_RETRIES:
+                raise
+            await asyncio.sleep(_retry_after_seconds(exc))
 
-    usage = response.usage
-    if usage and charge_usage:
-        update_usage(
-            owner_discord_id,
-            int(usage.prompt_tokens or 0),
-            int(usage.completion_tokens or 0),
-        )
-
-    content = response.choices[0].message.content
-    return (content or "").strip()
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("chat_completion failed without response")

@@ -2,11 +2,12 @@
 # https://discordpy.readthedocs.io/en/stable/quickstart.html#a-minimal-bot
 from __future__ import annotations
 
+import asyncio
 import io
 
 import discord
 from discord import app_commands
-from openai import APIError
+from openai import APIError, RateLimitError
 
 from config import SITE_URL, THREAD_MESSAGE_LIMIT, TOKEN
 from guild_nickname import build_combined_nickname, sync_guild_nickname
@@ -466,6 +467,10 @@ async def on_message(message: discord.Message):
         # the character that just spoke, forming a single linear reply chain.
         target = message
         for index, config in enumerate(configs):
+            if index > 0:
+                # Space out same-owner multi-character calls to reduce upstream 429s.
+                await asyncio.sleep(2)
+
             display = _char_display(config)
 
             if not config.api_key:
@@ -537,6 +542,11 @@ async def on_message(message: discord.Message):
                 traceback.print_exc()
 
             target = sent
+    except RateLimitError as e:
+        print(f"OpenRouter rate limit: {e}")
+        await message.channel.send(
+            "The language model is temporarily rate-limited. Please try again in a few seconds."
+        )
     except APIError as e:
         print(f"OpenRouter API error: {e}")
         await message.channel.send("Something went wrong calling the language model.")
