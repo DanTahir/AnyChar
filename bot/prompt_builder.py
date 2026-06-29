@@ -54,12 +54,19 @@ CREATIVITY_RULE = (
     "responses; each reply should feel distinct and alive."
 )
 
-SECOND_PERSON_RULE = (
-    "When roleplaying actions toward the person you are responding to, address them in the "
-    "second person (you/your) — in dialogue and when describing what you do to or with them. "
-    "In multi-character reply chains, that person is the most recent human user in the thread, "
-    "not another character's last bot reply. Only use third person or other address if the "
-    "character description or that user's Known User profile explicitly calls for it."
+USER_RP_STYLE_RULE = (
+    "Adapt your roleplay formatting and point of view to match the human user you are responding "
+    "to. In multi-character reply chains, take your cues from the most recent human user in the "
+    "thread — not from another character's last bot reply. "
+    "If they refer to themselves in third person, refer to them in third person; if they use "
+    "first person for themselves, refer to them in second person (you/your). "
+    "If their messages do not distinguish action from speech, do the same. "
+    "If they put dialogue in quotes and actions outside quotes, follow that pattern. "
+    "If they use plain text for dialogue and italics (or similar markup) for actions, do that. "
+    "Mirror whatever variation of roleplay style they use — tense, punctuation, line breaks, "
+    "and action/dialogue conventions included. "
+    "Only diverge from the user's style when the character description or that user's Known User "
+    "profile explicitly overrides it."
 )
 
 
@@ -195,7 +202,7 @@ def build_system_prompt(
     parts.append(f"\nRoleplay rules: {ROLEPLAY_RULES}")
     parts.append(f"\nKeep the scene moving: {ANTI_REPETITION_RULE}")
     parts.append(f"\nCreativity: {CREATIVITY_RULE}")
-    parts.append(f"\nAddressing the user: {SECOND_PERSON_RULE}")
+    parts.append(f"\nMatch the user's roleplay style: {USER_RP_STYLE_RULE}")
 
     style = character.get("replyStyle") or "semi-lit"
     words = REPLY_STYLE_WORDS.get(style, 150)
