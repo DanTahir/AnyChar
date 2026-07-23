@@ -39,3 +39,15 @@ ENCRYPTION_SECRET = os.getenv("ENCRYPTION_SECRET", "")
 DISCORD_MAX_LENGTH = 2000
 THREAD_MESSAGE_LIMIT = 100
 BUDGET_USD = 10.0
+
+# Conversation tree cache (S3-backed, see conversation_cache.py). A tree's
+# message IDs are kept in the in-memory index for this long after the last
+# read/write before they're allowed to fall out; the S3 file itself is never
+# deleted, only forgotten from memory.
+CONVERSATION_TTL_SECONDS = int(
+    os.getenv("CONVERSATION_TTL_SECONDS", str(7 * 24 * 60 * 60))
+)
+CONVERSATION_CLEANUP_INTERVAL_SECONDS = int(
+    os.getenv("CONVERSATION_CLEANUP_INTERVAL_SECONDS", str(60 * 60))
+)
+CONVERSATION_S3_PREFIX = "conversations"

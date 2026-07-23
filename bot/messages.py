@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 import re
+from dataclasses import dataclass
 from typing import Any
 
 import discord
@@ -36,27 +37,149 @@ def texts_too_similar(a: str, b: str, threshold: float = 0.9) -> bool:
     return difflib.SequenceMatcher(None, a, b).ratio() >= threshold
 
 
+@dataclass
+class HistItem:
+    """A lightweight, cacheable snapshot of one historical message.
+
+    Unlike a live ``discord.Message``, a ``HistItem``'s ``body`` and base
+    ``label`` are pre-rendered at creation time (mentions resolved, image
+    descriptions already baked in), so replaying history from the S3 cache
+    never needs another Discord or vision API call. Per-character context
+    (the known-user appearance annotation) is resolved at render time via
+    the helpers below, since the same cached item may be rendered for
+    different characters/configs.
+    """
+
+    message_id: int
+    author_id: int
+    is_bot: bool
+    character_name: str | None
+    nick: str | None
+    label: str
+    body: str
+    created_at_ms: int
+    parent_id: int | None = None
+
+    @classmethod
+    def from_message(
+        cls,
+        message: discord.Message,
+        bot_user: discord.ClientUser,
+        image_descriptions: dict[int, list[str]] | None = None,
+        *,
+        parent_id: int | None = None,
+        character_name_override: str | None = None,
+    ) -> "HistItem":
+        is_bot = message.author == bot_user
+        if is_bot:
+            name, _ = parse_character_prefix(message.content)
+            character_name = character_name_override or name
+            nick = None
+            label = f"{character_name} (a character, not a user)" if character_name else "Character"
+        else:
+            character_name = None
+            nick = getattr(message.author, "display_name", str(message.author))
+            label = f"{nick} (user:{message.author.id})"
+
+        body = message_body(message, bot_user, image_descriptions)
+
+        if parent_id is None:
+            ref = message.reference
+            parent_id = ref.message_id if ref and ref.message_id else None
+
+        return cls(
+            message_id=message.id,
+            author_id=message.author.id,
+            is_bot=is_bot,
+            character_name=character_name,
+            nick=nick,
+            label=label,
+            body=body,
+            created_at_ms=int(message.created_at.timestamp() * 1000),
+            parent_id=parent_id,
+        )
+
+    def to_node_dict(self) -> dict[str, Any]:
+        return {
+            "parent_id": str(self.parent_id) if self.parent_id is not None else None,
+            "author_id": str(self.author_id),
+            "is_bot": self.is_bot,
+            "character_name": self.character_name,
+            "nick": self.nick,
+            "label": self.label,
+            "body": self.body,
+            "created_at_ms": self.created_at_ms,
+        }
+
+    @classmethod
+    def from_node_dict(cls, message_id: int, node: dict[str, Any]) -> "HistItem":
+        parent_id = node.get("parent_id")
+        return cls(
+            message_id=message_id,
+            author_id=int(node.get("author_id") or 0),
+            is_bot=bool(node.get("is_bot")),
+            character_name=node.get("character_name"),
+            nick=node.get("nick"),
+            label=node.get("label") or "",
+            body=node.get("body") or "",
+            created_at_ms=int(node.get("created_at_ms") or 0),
+            parent_id=int(parent_id) if parent_id is not None else None,
+        )
+
+
+def _known_user_by_id(
+    author_id: int,
+    known_users: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    if not known_users:
+        return None
+    speaker_id = str(author_id)
+    for ku in known_users:
+        ku_id = ku.get("knownUserId") or ku["sk"].split("#KNOWN#")[-1]
+        if ku_id == speaker_id:
+            return ku
+    return None
+
+
+def hist_author_with_id(
+    item: HistItem,
+    known_users: list[dict[str, Any]] | None = None,
+) -> str:
+    if item.is_bot:
+        return item.label
+    ku = _known_user_by_id(item.author_id, known_users)
+    if ku and ku.get("appearance"):
+        return f"{item.label} {ku['appearance']}"
+    return item.label
+
+
+def hist_known_user(
+    item: HistItem,
+    known_users: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    if item.is_bot:
+        return None
+    return _known_user_by_id(item.author_id, known_users)
+
+
 def last_bot_message_text(
-    chain: list[discord.Message],
-    bot_user: discord.ClientUser,
+    chain: list[HistItem],
     character_name: str | None = None,
 ) -> str | None:
     """The text of the most recent message authored by the bot in this reply chain.
 
-    When ``character_name`` is given, only consider bot messages whose bold name
-    prefix matches that character, and return the body without the prefix.
+    When ``character_name`` is given, only consider bot messages whose recorded
+    character matches that name.
     """
     target = (character_name or "").strip().lower()
-    for msg in reversed(chain):
-        if msg.author != bot_user:
+    for item in reversed(chain):
+        if not item.is_bot:
             continue
-        name, body = parse_character_prefix(msg.content)
         if target:
-            if (name or "").strip().lower() != target:
+            if (item.character_name or "").strip().lower() != target:
                 continue
-            return body or None
-        text = (msg.content or "").strip()
-        return text or None
+            return item.body or None
+        return item.body or None
     return None
 
 
@@ -108,6 +231,23 @@ async def get_thread_root(message: discord.Message) -> discord.Message:
     return current
 
 
+def hist_chain_from_messages(
+    chain: list[discord.Message],
+    bot_user: discord.ClientUser,
+    image_descriptions: dict[int, list[str]] | None = None,
+) -> list[HistItem]:
+    """Convert a live Discord reply-chain walk into cacheable ``HistItem``s.
+
+    Used on a cache-miss/fallback to build the nodes that will be persisted
+    fresh to S3, and also to feed the prompt builder without changing the
+    live-walk behavior.
+    """
+    return [
+        HistItem.from_message(msg, bot_user, image_descriptions)
+        for msg in chain
+    ]
+
+
 def format_message_content(message: discord.Message, bot_user: discord.ClientUser) -> str:
     text = message.content
     for user in message.mentions:
@@ -135,12 +275,7 @@ def _known_user_for_speaker(
 ) -> dict[str, Any] | None:
     if not known_users or message.author == bot_user:
         return None
-    speaker_id = str(message.author.id)
-    for ku in known_users:
-        ku_id = ku.get("knownUserId") or ku["sk"].split("#KNOWN#")[-1]
-        if ku_id == speaker_id:
-            return ku
-    return None
+    return _known_user_by_id(message.author.id, known_users)
 
 
 def author_with_id(
@@ -183,7 +318,7 @@ def message_body(
 
 
 def build_thread_prompt(
-    chain: list[discord.Message],
+    chain: list[HistItem],
     current: discord.Message,
     bot_user: discord.ClientUser,
     character_name: str,
@@ -199,10 +334,9 @@ def build_thread_prompt(
         )
     if chain:
         parts.append("Earlier messages in this reply thread (oldest first, for context only):")
-        for index, msg in enumerate(chain, start=1):
+        for index, item in enumerate(chain, start=1):
             parts.append(
-                f"{index}. {author_with_id(msg, bot_user, known_users)}: "
-                f"{message_body(msg, bot_user, image_descriptions)}"
+                f"{index}. {hist_author_with_id(item, known_users)}: {item.body}"
             )
         parts.append("")
     parts.append(
@@ -283,8 +417,16 @@ async def send_chained_replies(
     text: str,
     *,
     mention_author: bool = False,
-) -> discord.Message:
+) -> list[discord.Message]:
+    """Send ``text`` as one or more Discord messages, each replying to the last.
+
+    Returns every chunk sent, in order, so callers can record each chunk as
+    its own history node with correct parent chaining (mirrors exactly what
+    a live Discord reply-chain walk would see).
+    """
     prior = origin
+    sent: list[discord.Message] = []
     for part in split_for_discord(text):
         prior = await prior.reply(part, mention_author=mention_author)
-    return prior
+        sent.append(prior)
+    return sent

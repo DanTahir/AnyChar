@@ -18,7 +18,7 @@ from dynamo import (
     query_memories,
     token_estimate,
 )
-from messages import get_thread_root, parse_character_prefix, texts_too_similar
+from messages import HistItem, parse_character_prefix, texts_too_similar
 from thread_images import format_image_descriptions
 from openrouter_client import chat_completion
 
@@ -137,8 +137,9 @@ def thread_storage_key(message: discord.Message, owner_id: str) -> str:
     return f"GUILDID#{message.guild.id}"
 
 
-def message_snowflake_time(message: discord.Message) -> int:
-    return int(message.created_at.timestamp() * 1000)
+def snowflake_time_ms(message_id: int) -> int:
+    """Derive a Discord snowflake's creation time (ms) without fetching it."""
+    return int(discord.utils.snowflake_time(message_id).timestamp() * 1000)
 
 
 def _memory_thread_root_id(item: dict[str, Any]) -> str | None:
@@ -167,16 +168,17 @@ def load_memories_for_prompt(
     owner_id: str,
     slug: str,
     server_id: str,
-    thread_root: discord.Message,
-    current_message: discord.Message,
+    root_id: int,
+    root_created_at_ms: int,
+    current_message_id: int,
 ) -> tuple[list[dict], list[dict]]:
     # Include every memory created before the conversation we're answering in.
-    # The reference point is the chain root (thread_root); for a brand-new @mention
+    # The reference point is the chain root (root_id); for a brand-new @mention
     # that root is the message itself, so all prior memories qualify.
     # All timestamps use the same created_at-based basis as stored memories
-    # (see root_ts = message_snowflake_time(thread_root) in create_short_term_memory).
-    first_ts = message_snowflake_time(thread_root)
-    current_root_id = str(thread_root.id)
+    # (see root_ts = snowflake_time_ms(root_id) in create_short_term_memory).
+    first_ts = root_created_at_ms
+    current_root_id = str(root_id)
     lt_all = query_memories(owner_id, slug, server_id, "MEMORYLT#")
     st_all = query_memories(owner_id, slug, server_id, "MEMORY#")
 
@@ -197,16 +199,55 @@ def load_memories_for_prompt(
     st = for_prompt(st_all)
     print(
         f"[MEM] owner={owner_id} slug={slug} server={server_id} "
-        f"msg={current_message.id} included lt={len(lt)} st={len(st)} "
+        f"msg={current_message_id} included lt={len(lt)} st={len(st)} "
         f"(queried lt={len(lt_all)} st={len(st_all)})"
     )
     return lt, st
 
 
+def _current_message_as_hist(
+    current: discord.Message,
+    image_descriptions: dict[int, list[str]] | None = None,
+) -> HistItem:
+    """Adapt the just-arrived live message into the same shape as a cached
+    ``HistItem`` so ``create_short_term_memory`` can loop over history
+    uniformly, without needing a ``bot_user`` reference (bot-ness is read
+    straight off ``discord.Message.author.bot``).
+    """
+    is_bot = bool(current.author.bot)
+    if is_bot:
+        name, body = parse_character_prefix(current.content)
+        character_name = name
+        nick = None
+        text = body or "[no text]"
+        label = f"{character_name} (a character, not a user)" if character_name else "Character"
+    else:
+        character_name = None
+        nick = getattr(current.author, "display_name", str(current.author))
+        text = current.content or "[no text]"
+        label = f"{nick} (user:{current.author.id})"
+
+    descs = (image_descriptions or {}).get(current.id)
+    if descs:
+        text += format_image_descriptions(descs)
+
+    return HistItem(
+        message_id=current.id,
+        author_id=current.author.id,
+        is_bot=is_bot,
+        character_name=character_name,
+        nick=nick,
+        label=label,
+        body=text,
+        created_at_ms=int(current.created_at.timestamp() * 1000),
+    )
+
+
 async def create_short_term_memory(
     config: RuntimeConfig,
-    thread_root: discord.Message,
-    chain: list[discord.Message],
+    root_id: int,
+    root_created_at_ms: int,
+    chain: list[HistItem],
     current: discord.Message,
     bot_reply: str,
     image_descriptions: dict[int, list[str]] | None = None,
@@ -221,21 +262,18 @@ async def create_short_term_memory(
         or "the character"
     )
 
+    full_chain = chain + [_current_message_as_hist(current, image_descriptions)]
+
     lines = []
-    for msg in chain + [current]:
-        if msg.author.bot:
-            other_name, body = parse_character_prefix(msg.content)
+    for item in full_chain:
+        if item.is_bot:
+            other_name = item.character_name
             if other_name:
                 lines.append(
-                    f"{other_name} (a character, not a user): {body or '[no text]'}"
+                    f"{other_name} (a character, not a user): {item.body or '[no text]'}"
                 )
             continue
-        nick = getattr(msg.author, "display_name", str(msg.author))
-        text = msg.content or "[no text]"
-        descs = (image_descriptions or {}).get(msg.id)
-        if descs:
-            text += format_image_descriptions(descs)
-        lines.append(f"{nick} (user:{msg.author.id}): {text}")
+        lines.append(f"{item.nick} (user:{item.author_id}): {item.body}")
     lines.append(f"{char_name} (the character, not a user): {bot_reply}")
     thread_text = "\n".join(lines)
 
@@ -268,33 +306,32 @@ async def create_short_term_memory(
         use_vision=False,
     )
 
-    last_human = current.author
-    for msg in reversed(chain + [current]):
-        if not msg.author.bot:
-            last_human = msg.author
+    last_human_id = current.author.id
+    for item in reversed(full_chain):
+        if not item.is_bot:
+            last_human_id = item.author_id
             break
 
     participants = []
     seen: set[str] = set()
-    for msg in chain + [current]:
-        if msg.author.bot:
+    for item in full_chain:
+        if item.is_bot:
             continue
-        uid = str(msg.author.id)
+        uid = str(item.author_id)
         if uid in seen:
             continue
         seen.add(uid)
-        nick = getattr(msg.author, "display_name", str(msg.author))
-        participants.append({"discordUserId": uid, "nickname": nick})
+        participants.append({"discordUserId": uid, "nickname": item.nick})
 
     print(
         f"[MEM create] owner={owner_id} slug={slug} server={server_id} "
-        f"thread_root={thread_root.id} last_human={last_human.id} "
+        f"thread_root={root_id} last_human={last_human_id} "
         f"summary_len={len(summary or '')}"
     )
-    root_ts = message_snowflake_time(thread_root)
+    root_ts = root_created_at_ms
     sk = (
         f"USERID#{owner_id}#CHAR#{slug}#SERVER#{server_id}"
-        f"#MEMORY#{root_ts}#{thread_root.id}#{last_human.id}"
+        f"#MEMORY#{root_ts}#{root_id}#{last_human_id}"
     )
 
     # De-dupe: don't pile on a memory that is near-identical to the most recent
@@ -308,7 +345,7 @@ async def create_short_term_memory(
     ):
         print(
             f"[MEM skip dup] owner={owner_id} slug={slug} server={server_id} "
-            f"thread_root={thread_root.id} (near-identical to previous memory)"
+            f"thread_root={root_id} (near-identical to previous memory)"
         )
         return
 
@@ -319,7 +356,7 @@ async def create_short_term_memory(
             "content": summary,
             "tokenEstimate": token_estimate(summary),
             "participants": participants,
-            "threadRootMessageId": str(thread_root.id),
+            "threadRootMessageId": str(root_id),
             "createdAt": datetime.now(timezone.utc).isoformat(),
         }
     )

@@ -8,6 +8,7 @@ import io
 import discord
 from discord import app_commands
 
+import conversation_cache
 from config import SITE_URL, THREAD_MESSAGE_LIMIT, TOKEN
 from guild_nickname import build_combined_nickname, sync_guild_nickname
 from appearance import ensure_character_appearance, ensure_known_user_appearance
@@ -23,9 +24,12 @@ from dynamo import (
     set_guild_active_characters,
 )
 from messages import (
+    HistItem,
     build_thread_prompt,
     fetch_message,
     fetch_reply_chain,
+    get_thread_root,
+    hist_chain_from_messages,
     last_bot_message_text,
     send_chained_replies,
     single_message_prompt,
@@ -39,9 +43,9 @@ from prompt_builder import (
 from runtime import (
     RuntimeConfig,
     create_short_term_memory,
-    get_thread_root,
     load_memories_for_prompt,
     resolve_runtime_configs,
+    snowflake_time_ms,
     thread_storage_key,
 )
 from s3_images import fetch_image_bytes
@@ -60,6 +64,7 @@ class AnyCharClient(discord.Client):
     async def setup_hook(self) -> None:
         synced = await self.tree.sync()
         print(f"Synced {len(synced)} global command(s)")
+        asyncio.create_task(conversation_cache.cleanup_loop())
 
 
 client = AnyCharClient()
@@ -297,6 +302,8 @@ async def on_guild_join(guild: discord.Guild):
 async def is_reply_to_bot(message: discord.Message) -> bool:
     if not message.reference or not message.reference.message_id:
         return False
+    if conversation_cache.is_known_bot_message(message.reference.message_id):
+        return True
     parent = await fetch_message(message.channel, message.reference.message_id, message.reference)
     return parent is not None and parent.author == client.user
 
@@ -312,11 +319,12 @@ def _char_display(config: RuntimeConfig) -> str:
 async def generate_reply(
     message: discord.Message,
     config: RuntimeConfig,
-    thread_root: discord.Message,
+    root_id: int,
+    root_created_at_ms: int,
     all_configs: list[RuntimeConfig] | None = None,
     index: int = 0,
     *,
-    chain: list[discord.Message] | None = None,
+    chain: list[HistItem] | None = None,
     image_descriptions: dict[int, list[str]] | None = None,
 ) -> str:
     if is_over_budget(config.owner_user):
@@ -327,14 +335,17 @@ async def generate_reply(
     names = [_char_display(c) for c in all_configs]
 
     chain = chain if chain is not None else (
-        await fetch_reply_chain(message) if message.reference else []
+        hist_chain_from_messages(await fetch_reply_chain(message), client.user)
+        if message.reference
+        else []
     )
     lt, st = load_memories_for_prompt(
         config.owner_discord_id,
         config.character_slug,
         config.server_id,
-        thread_root,
-        message,
+        root_id,
+        root_created_at_ms,
+        message.id,
     )
 
     character = await ensure_character_appearance(
@@ -389,7 +400,7 @@ async def generate_reply(
     # prompt caches stay warm across turns (see OpenRouter's provider sticky
     # routing docs). Deterministic — no DB write needed.
     session_id = (
-        f"anychar:{config.owner_discord_id}:{config.character_slug}:{thread_root.id}"
+        f"anychar:{config.owner_discord_id}:{config.character_slug}:{root_id}"
     )
 
     reply = await chat_completion(
@@ -403,7 +414,7 @@ async def generate_reply(
 
     # Self-repetition guard: if the model echoed its previous reply in this thread
     # almost verbatim, regenerate once with an explicit do-not-repeat instruction.
-    prev_bot_text = last_bot_message_text(chain, client.user, character_name=char_name)
+    prev_bot_text = last_bot_message_text(chain, character_name=char_name)
     if prev_bot_text and texts_too_similar(prev_bot_text, reply):
         nudge_text = (
             "Your reply was almost identical to your previous message in this conversation. "
@@ -449,27 +460,104 @@ async def on_message(message: discord.Message):
             await sync_guild_nickname(message.guild, combined, bot_id=client.user.id)
 
     try:
-        root = await get_thread_root(message)
         storage_key = thread_storage_key(message, configs[0].owner_discord_id)
-        chain = await fetch_reply_chain(message) if message.reference else []
+        is_dm = isinstance(message.channel, discord.DMChannel)
+        context_id = (
+            conversation_cache.context_key_for_dm(configs[0].owner_discord_id)
+            if is_dm
+            else conversation_cache.context_key_for_guild(message.guild.id)
+        )
 
         first = configs[0]
-        if first.api_key:
-            try:
-                await index_thread_images(
-                    message,
-                    chain,
-                    guild_or_dm_key=storage_key,
-                    api_key=first.api_key,
-                    owner_discord_id=first.owner_discord_id,
+        chain: list[HistItem] | None = None
+        root_id: int
+        is_fresh_tree: bool
+
+        # Try the cache first: if the message being replied to is a known node
+        # in an S3-backed tree we've already recorded, skip the live Discord
+        # walk-back entirely.
+        if message.reference and message.reference.message_id:
+            cache_hit = conversation_cache.lookup(message.reference.message_id)
+            # Defensive check: only trust the cache hit if it's scoped to THIS
+            # guild/DM context. Discord message ids are globally unique so
+            # this should never actually mismatch, but a mismatch would mean
+            # an indexing bug elsewhere — safer to fall back to a live walk
+            # than to render another guild/DM's conversation into this one.
+            if cache_hit and cache_hit[0] == context_id:
+                hit_context_id, hit_root_id = cache_hit
+                tree = await conversation_cache.load_tree(hit_context_id, hit_root_id)
+                built = (
+                    conversation_cache.build_chain_from_tree(
+                        tree, message.reference.message_id
+                    )
+                    if tree
+                    else None
                 )
-            except Exception as e:
-                import traceback
+                if built is not None:
+                    chain = built
+                    root_id = hit_root_id
+                    is_fresh_tree = False
 
-                print(f"Thread image indexing error: {e!r}")
-                traceback.print_exc()
+        if chain is None:
+            # Cache miss, expired tree, or a brand-new @mention with no reply
+            # reference at all — fall back to the live Discord walk-back and
+            # (re)build this tree fresh (overwrites any stale S3 file).
+            if message.reference and message.reference.message_id:
+                root_msg = await get_thread_root(message)
+                root_id = root_msg.id
+                legacy_chain = await fetch_reply_chain(message)
+            else:
+                root_id = message.id
+                legacy_chain = []
+            is_fresh_tree = True
 
-        image_descriptions = load_image_descriptions(storage_key, chain + [message])
+            if first.api_key:
+                try:
+                    await index_thread_images(
+                        message,
+                        legacy_chain,
+                        guild_or_dm_key=storage_key,
+                        api_key=first.api_key,
+                        owner_discord_id=first.owner_discord_id,
+                    )
+                except Exception as e:
+                    import traceback
+
+                    print(f"Thread image indexing error: {e!r}")
+                    traceback.print_exc()
+
+            legacy_img_desc = load_image_descriptions(
+                storage_key, legacy_chain + [message]
+            )
+            chain = hist_chain_from_messages(legacy_chain, client.user, legacy_img_desc)
+            current_img_desc = legacy_img_desc
+        else:
+            # Cache hit — ancestors already have their bodies/descriptions
+            # baked in from when they were first cached; only the just-arrived
+            # message might have new, not-yet-indexed images.
+            if first.api_key:
+                try:
+                    await index_thread_images(
+                        message,
+                        [],
+                        guild_or_dm_key=storage_key,
+                        api_key=first.api_key,
+                        owner_discord_id=first.owner_discord_id,
+                    )
+                except Exception as e:
+                    import traceback
+
+                    print(f"Thread image indexing error: {e!r}")
+                    traceback.print_exc()
+            current_img_desc = load_image_descriptions(storage_key, [message])
+
+        root_created_at_ms = snowflake_time_ms(root_id)
+
+        user_item = HistItem.from_message(message, client.user, current_img_desc)
+        chain_so_far = list(chain)
+        pending_target_item = user_item
+        turn_items: list[HistItem] = list(chain) if is_fresh_tree else []
+        replied_any = False
 
         # Each character replies in order: the first to the user, each next one to
         # the character that just spoke, forming a single linear reply chain.
@@ -487,26 +575,20 @@ async def on_message(message: discord.Message):
                 )
                 continue
 
-            count = increment_thread_count(storage_key, root.id)
+            count = increment_thread_count(storage_key, root_id)
             if count > THREAD_MESSAGE_LIMIT:
                 await message.channel.send("Maximum length reached.")
                 break
 
+            target_chain = list(chain_so_far)
+            target_img_desc = current_img_desc if index == 0 else {}
+
             async with message.channel.typing():
-                target_chain = (
-                    chain
-                    if target is message
-                    else (
-                        await fetch_reply_chain(target) if target.reference else []
-                    )
-                )
-                target_img_desc = load_image_descriptions(
-                    storage_key, target_chain + [target]
-                )
                 reply = await generate_reply(
                     target,
                     config,
-                    root,
+                    root_id,
+                    root_created_at_ms,
                     configs,
                     index,
                     chain=target_chain,
@@ -521,19 +603,10 @@ async def on_message(message: discord.Message):
             sent = await send_chained_replies(target, out, mention_author=False)
 
             try:
-                target_chain = (
-                    chain
-                    if target is message
-                    else (
-                        await fetch_reply_chain(target) if target.reference else []
-                    )
-                )
-                target_img_desc = load_image_descriptions(
-                    storage_key, target_chain + [target]
-                )
                 await create_short_term_memory(
                     config,
-                    root,
+                    root_id,
+                    root_created_at_ms,
                     target_chain,
                     target,
                     reply,
@@ -549,7 +622,41 @@ async def on_message(message: discord.Message):
                 )
                 traceback.print_exc()
 
-            target = sent
+            # Build a HistItem per Discord chunk sent, chained by parent_id
+            # exactly as Discord's own reply chain links them. Deliberately NOT
+            # overriding the character name here: a live walk-back would parse
+            # it straight off the raw content's leading "**Name**" prefix (only
+            # present on the first chunk, and only when multiple characters are
+            # active), so leaving it unset keeps cached rendering identical to
+            # the old live-walk behavior, quirks included.
+            chunk_items: list[HistItem] = []
+            parent_id = target.id
+            for sent_msg in sent:
+                chunk_items.append(
+                    HistItem.from_message(sent_msg, client.user, None, parent_id=parent_id)
+                )
+                parent_id = sent_msg.id
+
+            chain_so_far.append(pending_target_item)
+            chain_so_far.extend(chunk_items[:-1])
+            turn_items.append(pending_target_item)
+            turn_items.extend(chunk_items[:-1])
+            pending_target_item = chunk_items[-1]
+            replied_any = True
+
+            target = sent[-1]
+
+        if replied_any:
+            turn_items.append(pending_target_item)
+            try:
+                await conversation_cache.record_turn(
+                    context_id, root_id, turn_items, is_fresh_tree=is_fresh_tree
+                )
+            except Exception as e:
+                import traceback
+
+                print(f"Conversation cache write error: {e!r}")
+                traceback.print_exc()
     except RateLimitError as e:
         print(f"OpenRouter rate limit: {e}")
         await message.channel.send(
