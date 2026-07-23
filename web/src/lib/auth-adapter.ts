@@ -5,6 +5,7 @@ import type {
   AdapterUser,
 } from "next-auth/adapters";
 
+import { encryptApiKey } from "./crypto";
 import {
   deleteItem,
   getItem,
@@ -13,6 +14,7 @@ import {
   updateItem,
   userSk,
 } from "./dynamo";
+import { createOpenRouterKey } from "./openrouter";
 
 function sessionSk(token: string) {
   return `SESSION#${token}`;
@@ -38,7 +40,7 @@ export function AnyCharAdapter(): Adapter {
   return {
     async createUser(user) {
       const discordId = user.id!;
-      const item = {
+      const item: Record<string, unknown> = {
         pk: "USERS",
         sk: userSk(discordId),
         id: discordId,
@@ -54,6 +56,20 @@ export function AnyCharAdapter(): Adapter {
         usageInputTokens: 0,
         usageOutputTokens: 0,
       };
+
+      // New users are auto-approved on their first login. If OpenRouter key
+      // provisioning fails for any reason, fall back to leaving the user
+      // pending so an admin can approve them manually.
+      try {
+        const { key, keyId } = await createOpenRouterKey(discordId);
+        item.approved = true;
+        item.gsi1pk = "APPROVAL#approved";
+        item.openRouterApiKey = encryptApiKey(key);
+        item.openRouterKeyId = keyId;
+      } catch (err) {
+        console.error("Auto-approval failed for new user, leaving pending:", err);
+      }
+
       await putItem(item);
       return { ...user, id: discordId } as AdapterUser;
     },
