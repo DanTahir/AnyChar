@@ -11,10 +11,6 @@ export const config = {
   encryptionSecret: process.env.ENCRYPTION_SECRET ?? "",
   openRouterManagementKey: process.env.OPENROUTER_MANAGEMENT_KEY ?? "",
   budgetUsd: 10,
-  inputCostPerM: 1.0,
-  openRouterVisionModel:
-    process.env.OPENROUTER_VISION_MODEL ?? "meta-llama/llama-4-maverick",
-  outputCostPerM: 1.5,
   // View Channels, Send Messages, Send Messages in Threads, Embed Links,
   // Attach Files, Read Message History, Change Nickname, Use Application Commands
   botPermissions: "2416299008",
@@ -23,11 +19,4 @@ export const config = {
 export function botInviteUrl(clientId?: string): string {
   const id = clientId ?? config.discordClientId;
   return `https://discord.com/api/oauth2/authorize?client_id=${id}&permissions=${config.botPermissions}&scope=bot%20applications.commands`;
-}
-
-export function estimateCostUsd(inputTokens: number, outputTokens: number): number {
-  return (
-    (inputTokens / 1_000_000) * config.inputCostPerM +
-    (outputTokens / 1_000_000) * config.outputCostPerM
-  );
 }

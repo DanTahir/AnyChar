@@ -1,23 +1,15 @@
 from __future__ import annotations
 
-from config import (
-    BUDGET_EXCEEDED_MESSAGE,
-    BUDGET_USD,
-    INPUT_COST_PER_M,
-    OUTPUT_COST_PER_M,
-)
-
-
-def estimate_cost_usd(input_tokens: int, output_tokens: int) -> float:
-    return (input_tokens / 1_000_000) * INPUT_COST_PER_M + (
-        output_tokens / 1_000_000
-    ) * OUTPUT_COST_PER_M
+from config import BUDGET_EXCEEDED_MESSAGE, BUDGET_USD
 
 
 def user_estimated_cost(user: dict) -> float:
-    inp = int(user.get("usageInputTokens") or 0)
-    out = int(user.get("usageOutputTokens") or 0)
-    return estimate_cost_usd(inp, out)
+    """Actual USD charged so far (2x OpenRouter's real cost), tracked directly
+    on the user item by openrouter_client.chat_completion() as usageCostUsd."""
+    try:
+        return float(user.get("usageCostUsd") or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def user_budget_usd(user: dict) -> float:

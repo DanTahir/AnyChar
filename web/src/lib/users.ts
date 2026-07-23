@@ -20,7 +20,11 @@ export type AppUser = {
   admin: boolean;
   usageInputTokens: number;
   usageOutputTokens: number;
+  usageCostUsd: number;
+  usageCachedTokens: number;
+  usageCacheWriteTokens: number;
   budgetUsd: number;
+  preferredTextModel?: string;
   age18plus?: boolean;
 };
 
@@ -33,7 +37,12 @@ export async function getAppUser(discordId: string): Promise<AppUser | null> {
     admin: Boolean(item.admin),
     usageInputTokens: Number(item.usageInputTokens ?? 0),
     usageOutputTokens: Number(item.usageOutputTokens ?? 0),
+    usageCostUsd: Number(item.usageCostUsd ?? 0),
+    usageCachedTokens: Number(item.usageCachedTokens ?? 0),
+    usageCacheWriteTokens: Number(item.usageCacheWriteTokens ?? 0),
     budgetUsd: Number(item.budgetUsd ?? config.budgetUsd),
+    preferredTextModel:
+      typeof item.preferredTextModel === "string" ? item.preferredTextModel : undefined,
     age18plus: typeof item.age18plus === "boolean" ? item.age18plus : undefined,
   };
 }

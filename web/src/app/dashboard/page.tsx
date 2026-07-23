@@ -2,10 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
-import { estimateCostUsd } from "@/lib/config";
+import { DEFAULT_TEXT_MODEL } from "@/lib/models";
 import { getAppUser, listCharacters } from "@/lib/users";
 
 import AgeGate from "./age-gate";
+import ModelSelector from "./model-selector";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -17,10 +18,6 @@ export default async function DashboardPage() {
     return <AgeGate />;
   }
   const characters = await listCharacters(session.user.id);
-  const cost = estimateCostUsd(
-    user?.usageInputTokens ?? 0,
-    user?.usageOutputTokens ?? 0,
-  );
 
   return (
     <div className="space-y-8">
@@ -29,15 +26,19 @@ export default async function DashboardPage() {
         <p className="text-purple-300/70">Manage your characters and usage.</p>
       </div>
 
-      <section className="card p-5">
-        <h2 className="font-semibold text-purple-100">Usage</h2>
-        <p className="mt-2 text-sm text-purple-300/70">
-          Input tokens: {user?.usageInputTokens ?? 0} · Output tokens:{" "}
-          {user?.usageOutputTokens ?? 0}
-        </p>
-        <p className="text-sm text-purple-300/70">
-          Estimated cost: ${cost.toFixed(4)} / ${(user?.budgetUsd ?? 10).toFixed(2)} cap
-        </p>
+      <section className="card space-y-4 p-5">
+        <div>
+          <h2 className="font-semibold text-purple-100">Usage</h2>
+          <p className="mt-2 text-sm text-purple-300/70">
+            Input tokens: {user?.usageInputTokens ?? 0} · Output tokens:{" "}
+            {user?.usageOutputTokens ?? 0} · Cached tokens: {user?.usageCachedTokens ?? 0}
+          </p>
+          <p className="text-sm text-purple-300/70">
+            Cost: ${(user?.usageCostUsd ?? 0).toFixed(4)} / ${(user?.budgetUsd ?? 10).toFixed(2)}{" "}
+            cap
+          </p>
+        </div>
+        <ModelSelector currentModel={user?.preferredTextModel ?? DEFAULT_TEXT_MODEL} />
       </section>
 
       <section className="space-y-4">

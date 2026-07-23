@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from decimal import Decimal
 from typing import Any
 
 import boto3
@@ -248,15 +249,34 @@ def delete_memory_item(pk: str, sk: str) -> None:
     _table.delete_item(Key={"pk": pk, "sk": sk})
 
 
-def update_usage(discord_id: str | int, input_tokens: int, output_tokens: int) -> None:
+def update_usage(
+    discord_id: str | int,
+    input_tokens: int,
+    output_tokens: int,
+    cost_usd: float = 0.0,
+    cached_tokens: int = 0,
+    cache_write_tokens: int = 0,
+) -> None:
     _table.update_item(
         Key={"pk": "USERS", "sk": _user_sk(discord_id)},
-        UpdateExpression="ADD usageInputTokens :i, usageOutputTokens :o",
+        UpdateExpression=(
+            "ADD usageInputTokens :i, usageOutputTokens :o, usageCostUsd :c, "
+            "usageCachedTokens :ct, usageCacheWriteTokens :cw"
+        ),
         ExpressionAttributeValues={
             ":i": input_tokens,
             ":o": output_tokens,
+            ":c": Decimal(str(cost_usd)),
+            ":ct": cached_tokens,
+            ":cw": cache_write_tokens,
         },
     )
+
+
+def get_user_preferred_model(discord_id: str | int, default: str) -> str:
+    user = get_user(discord_id)
+    preferred = (user or {}).get("preferredTextModel")
+    return preferred or default
 
 
 def token_estimate(text: str) -> int:

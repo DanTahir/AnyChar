@@ -1,5 +1,5 @@
-import { config } from "./config";
 import { decryptApiKey } from "./crypto";
+import { VISION_MODEL } from "./models";
 import { updateItem, userSk } from "./dynamo";
 
 const CHARACTER_SYSTEM =
@@ -18,16 +18,27 @@ const KNOWN_USER_SYSTEM =
   "details. Aim for roughly 1000–1500 tokens. Write only the description starting with 'is ', " +
   "no preamble.";
 
+const BILLING_MULTIPLIER = 2;
+
 type ContentPart =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string } };
+
+type VisionUsage = {
+  text: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  cachedTokens: number;
+  cacheWriteTokens: number;
+};
 
 async function visionCompletion(
   apiKey: string,
   system: string,
   content: ContentPart[],
   maxTokens: number,
-): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+): Promise<VisionUsage> {
   const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -35,7 +46,7 @@ async function visionCompletion(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: config.openRouterVisionModel,
+      model: VISION_MODEL,
       max_tokens: maxTokens,
       messages: [
         { role: "system", content: system },
@@ -49,21 +60,45 @@ async function visionCompletion(
   }
   const data = (await resp.json()) as {
     choices?: { message?: { content?: string } }[];
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      cost?: number;
+      prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
+    };
   };
+  const usage = data.usage ?? {};
+  const details = usage.prompt_tokens_details ?? {};
+  const rawCost = typeof usage.cost === "number" ? usage.cost : 0;
   return {
     text: (data.choices?.[0]?.message?.content ?? "").trim(),
-    inputTokens: data.usage?.prompt_tokens ?? 0,
-    outputTokens: data.usage?.completion_tokens ?? 0,
+    inputTokens: usage.prompt_tokens ?? 0,
+    outputTokens: usage.completion_tokens ?? 0,
+    costUsd: BILLING_MULTIPLIER * rawCost,
+    cachedTokens: details.cached_tokens ?? 0,
+    cacheWriteTokens: details.cache_write_tokens ?? 0,
   };
 }
 
-export async function updateUsage(discordId: string, inputTokens: number, outputTokens: number) {
+export async function updateUsage(
+  discordId: string,
+  inputTokens: number,
+  outputTokens: number,
+  costUsd: number = 0,
+  cachedTokens: number = 0,
+  cacheWriteTokens: number = 0,
+) {
   await updateItem(
     "USERS",
     userSk(discordId),
-    "ADD usageInputTokens :i, usageOutputTokens :o",
-    { ":i": inputTokens, ":o": outputTokens },
+    "ADD usageInputTokens :i, usageOutputTokens :o, usageCostUsd :c, usageCachedTokens :ct, usageCacheWriteTokens :cw",
+    {
+      ":i": inputTokens,
+      ":o": outputTokens,
+      ":c": costUsd,
+      ":ct": cachedTokens,
+      ":cw": cacheWriteTokens,
+    },
   );
 }
 
@@ -78,13 +113,21 @@ export async function describeCharacterPortrait(
 ): Promise<string> {
   const apiKey = decryptApiKey(encryptedApiKey);
   if (!apiKey) throw new Error("No OpenRouter API key");
-  const { text, inputTokens, outputTokens } = await visionCompletion(
-    apiKey,
-    CHARACTER_SYSTEM,
-    [{ type: "text", text: "Describe this character portrait." }, imagePart(dataUrl)],
-    2000,
+  const { text, inputTokens, outputTokens, costUsd, cachedTokens, cacheWriteTokens } =
+    await visionCompletion(
+      apiKey,
+      CHARACTER_SYSTEM,
+      [{ type: "text", text: "Describe this character portrait." }, imagePart(dataUrl)],
+      2000,
+    );
+  await updateUsage(
+    ownerDiscordId,
+    inputTokens,
+    outputTokens,
+    costUsd,
+    cachedTokens,
+    cacheWriteTokens,
   );
-  await updateUsage(ownerDiscordId, inputTokens, outputTokens);
   return text;
 }
 
@@ -95,13 +138,21 @@ export async function describeKnownUserPortrait(
 ): Promise<string> {
   const apiKey = decryptApiKey(encryptedApiKey);
   if (!apiKey) throw new Error("No OpenRouter API key");
-  const { text, inputTokens, outputTokens } = await visionCompletion(
-    apiKey,
-    KNOWN_USER_SYSTEM,
-    [{ type: "text", text: "Describe this person's appearance." }, imagePart(dataUrl)],
-    2000,
+  const { text, inputTokens, outputTokens, costUsd, cachedTokens, cacheWriteTokens } =
+    await visionCompletion(
+      apiKey,
+      KNOWN_USER_SYSTEM,
+      [{ type: "text", text: "Describe this person's appearance." }, imagePart(dataUrl)],
+      2000,
+    );
+  await updateUsage(
+    ownerDiscordId,
+    inputTokens,
+    outputTokens,
+    costUsd,
+    cachedTokens,
+    cacheWriteTokens,
   );
-  await updateUsage(ownerDiscordId, inputTokens, outputTokens);
   let appearance = text;
   if (appearance && !appearance.toLowerCase().startsWith("is ")) {
     appearance = `is ${appearance.replace(/^\s+/, "")}`;

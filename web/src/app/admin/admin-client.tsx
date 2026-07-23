@@ -8,6 +8,8 @@ type AdminUser = {
   email?: string;
   inputTokens?: number;
   outputTokens?: number;
+  cachedTokens?: number;
+  cacheWriteTokens?: number;
   costUsd?: number;
   budgetUsd?: number;
 };
@@ -60,7 +62,8 @@ function UserTable({
                   </div>
                   <div className="text-xs text-purple-300/60">
                     {numberFmt.format(u.inputTokens ?? 0)} in ·{" "}
-                    {numberFmt.format(u.outputTokens ?? 0)} out · ~$
+                    {numberFmt.format(u.outputTokens ?? 0)} out ·{" "}
+                    {numberFmt.format(u.cachedTokens ?? 0)} cached · ~$
                     {(u.costUsd ?? 0).toFixed(4)}
                   </div>
                 </td>

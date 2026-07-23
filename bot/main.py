@@ -7,7 +7,6 @@ import io
 
 import discord
 from discord import app_commands
-from openai import APIError, RateLimitError
 
 from config import SITE_URL, THREAD_MESSAGE_LIMIT, TOKEN
 from guild_nickname import build_combined_nickname, sync_guild_nickname
@@ -32,7 +31,7 @@ from messages import (
     single_message_prompt,
     texts_too_similar,
 )
-from openrouter_client import chat_completion
+from openrouter_client import OpenRouterAPIError, RateLimitError, chat_completion
 from prompt_builder import (
     area_context_line,
     build_system_prompt,
@@ -386,12 +385,20 @@ async def generate_reply(
     else:
         text = single_message_prompt(message, client.user, known_users, img_desc)
 
+    # Pin this Discord thread/character to a single OpenRouter provider so
+    # prompt caches stay warm across turns (see OpenRouter's provider sticky
+    # routing docs). Deterministic — no DB write needed.
+    session_id = (
+        f"anychar:{config.owner_discord_id}:{config.character_slug}:{thread_root.id}"
+    )
+
     reply = await chat_completion(
         api_key=config.api_key,
         owner_discord_id=config.owner_discord_id,
         system=system,
         user_content=text,
         use_vision=False,
+        session_id=session_id,
     )
 
     # Self-repetition guard: if the model echoed its previous reply in this thread
@@ -410,6 +417,7 @@ async def generate_reply(
             system=system,
             user_content=retry_content,
             use_vision=False,
+            session_id=session_id,
         )
 
     return reply
@@ -547,7 +555,7 @@ async def on_message(message: discord.Message):
         await message.channel.send(
             "The language model is temporarily rate-limited. Please try again in a few seconds."
         )
-    except APIError as e:
+    except OpenRouterAPIError as e:
         print(f"OpenRouter API error: {e}")
         await message.channel.send("Something went wrong calling the language model.")
     except Exception as e:
