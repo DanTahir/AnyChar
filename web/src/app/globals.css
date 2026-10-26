@@ -7,18 +7,30 @@
   --purple-muted: #6b21a8;
   --surface: #140d24;
   --surface-border: #2e1a47;
+
+  /* Shared entrance curve for every marketing effect. */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Pointer position for the hero spotlight, written by MarketingEffects. */
+  --x: 50%;
+  --y: 30%;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-sora), var(--font-inter), system-ui, sans-serif;
+  --font-serif: var(--font-instrument), Georgia, "Times New Roman", serif;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans);
+  font-family: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 body::before {
@@ -30,6 +42,11 @@ body::before {
     radial-gradient(ellipse 60% 40% at 100% 100%, rgba(109, 40, 217, 0.15), transparent);
   pointer-events: none;
   z-index: -1;
+}
+
+::selection {
+  background: rgba(192, 132, 252, 0.35);
+  color: #fff;
 }
 
 .card {
@@ -48,6 +65,388 @@ body::before {
   @apply text-purple-400 transition hover:text-purple-300 hover:underline;
 }
 
+.nav-link {
+  @apply rounded-full px-3 py-1.5 text-purple-200/75 transition hover:bg-white/[0.06] hover:text-white;
+}
+
 .input-field {
   @apply w-full rounded-lg border border-purple-900/60 bg-[#0f0819] px-3 py-2 text-purple-50 placeholder:text-purple-400/40 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500;
+}
+
+/* ===========================================================================
+   Marketing pages (landing + about). Everything below is opt-in via classes
+   or the .marketing wrapper, so the dashboard is unaffected.
+   =========================================================================== */
+
+/* Marketing pages are full-bleed: drop the dashboard's narrow <main> container. */
+main:has(> .marketing) {
+  max-width: none;
+  padding: 0;
+}
+
+.marketing {
+  position: relative;
+  overflow-x: clip;
+}
+
+.marketing [id] {
+  scroll-margin-top: 6rem;
+}
+
+/* --- Buttons -------------------------------------------------------------- */
+.mk-btn-primary {
+  @apply inline-flex items-center justify-center gap-2.5 rounded-full px-6 py-3 text-[0.95rem] font-semibold text-white;
+  background-image: linear-gradient(100deg, #7c3aed, #c026d3 40%, #ec4899 70%, #fb923c);
+  background-size: 200% 100%;
+  box-shadow:
+    0 12px 40px -12px rgba(217, 70, 239, 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition:
+    background-position 0.6s var(--ease),
+    transform 0.3s var(--ease),
+    box-shadow 0.3s var(--ease);
+}
+
+.mk-btn-primary:hover {
+  background-position: 100% 0;
+  transform: translateY(-2px);
+  box-shadow:
+    0 18px 50px -12px rgba(236, 72, 153, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.mk-btn-primary.mk-btn-sm {
+  @apply gap-2 px-4 py-2 text-sm;
+}
+
+.mk-btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-full border border-white/[0.12] bg-white/[0.03] px-6 py-3 text-[0.95rem] font-medium text-purple-100 transition hover:border-white/25 hover:bg-white/[0.07];
+}
+
+/* --- Hero backdrop -------------------------------------------------------- */
+.mk-aurora {
+  transform-origin: 50% 40%;
+  animation: mk-aurora 24s ease-in-out infinite alternate;
+}
+
+@keyframes mk-aurora {
+  from {
+    transform: scale(1.06) translate3d(0, 0, 0);
+  }
+  to {
+    transform: scale(1.16) translate3d(-2%, 1.5%, 0);
+  }
+}
+
+.mk-spotlight {
+  background: radial-gradient(
+    40rem circle at var(--x) var(--y),
+    rgba(192, 132, 252, 0.17),
+    rgba(244, 114, 182, 0.06) 40%,
+    transparent 70%
+  );
+  transition: background 0.18s linear;
+}
+
+/* Seamless grain from an inline SVG turbulence filter (no extra request). */
+.mk-grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+  opacity: 0.14;
+  mix-blend-mode: overlay;
+}
+
+/* --- Type ----------------------------------------------------------------- */
+.mk-gradient-text {
+  background-image: linear-gradient(100deg, #c084fc, #f472b6 30%, #fdba74 50%, #f472b6 70%, #c084fc);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  /* Italic glyphs overhang their box; pad so background-clip doesn't shear them. */
+  padding-inline: 0.08em;
+  margin-inline: -0.08em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  animation: mk-pan 8s ease-in-out infinite;
+}
+
+@keyframes mk-pan {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.mk-caret {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.1em;
+  margin-left: 0.12em;
+  vertical-align: -0.2em;
+  background: currentColor;
+  opacity: 0.75;
+  animation: mk-blink 1.05s steps(2, start) infinite;
+}
+
+@keyframes mk-blink {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* --- Entrances ------------------------------------------------------------ */
+
+/* Above-the-fold entrance: pure CSS, so it never depends on hydration. */
+.mk-rise {
+  animation: mk-rise 0.9s var(--ease) both;
+  animation-delay: var(--d, 0ms);
+}
+
+@keyframes mk-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+/*
+ * Scroll reveal. The hidden state is scoped to html.js, which only
+ * MarketingEffects adds -- without JavaScript every [data-reveal] block stays
+ * visible. Never move the hidden state out of that scope.
+ */
+html.js [data-reveal] {
+  opacity: 0;
+  transform: translate3d(0, 24px, 0);
+  transition:
+    opacity 0.8s var(--ease),
+    transform 0.8s var(--ease);
+  transition-delay: var(--d, 0ms);
+}
+
+html.js [data-reveal].revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/* --- Ornaments ------------------------------------------------------------ */
+.mk-ping {
+  position: relative;
+}
+
+.mk-ping::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: inherit;
+  animation: mk-ping 2.2s var(--ease) infinite;
+}
+
+@keyframes mk-ping {
+  from {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  to {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+/* Spinning gradient ring + breathing glow behind the face mark. */
+.mk-halo {
+  position: relative;
+  isolation: isolate;
+  border-radius: 9999px;
+}
+
+.mk-halo::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  z-index: -1;
+  border-radius: inherit;
+  background: conic-gradient(from 0deg, #a855f7, #f472b6, #fdba74, #f472b6, #a855f7);
+  animation: mk-spin 8s linear infinite;
+}
+
+.mk-halo::after {
+  content: "";
+  position: absolute;
+  inset: -32%;
+  z-index: -2;
+  border-radius: inherit;
+  background: radial-gradient(closest-side, rgba(217, 70, 239, 0.38), transparent);
+  animation: mk-breathe 5s ease-in-out infinite;
+}
+
+@keyframes mk-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes mk-breathe {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+.mk-float {
+  animation: mk-float 6s ease-in-out infinite;
+  animation-delay: var(--d, 0ms);
+}
+
+@keyframes mk-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
+/* Illustrations have dark backgrounds; feather their edges into the page. */
+.mk-art-fade {
+  -webkit-mask-image: radial-gradient(ellipse 72% 70% at 50% 50%, #000 52%, transparent 100%);
+  mask-image: radial-gradient(ellipse 72% 70% at 50% 50%, #000 52%, transparent 100%);
+}
+
+.mk-hairline {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+}
+
+/* --- Chat scene ----------------------------------------------------------- */
+.mk-msg {
+  animation: mk-msg 0.6s var(--ease) both;
+  animation-delay: var(--d, 0ms);
+}
+
+@keyframes mk-msg {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.mk-scene {
+  animation: mk-fade 0.5s var(--ease) both;
+}
+
+@keyframes mk-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.mk-typing span {
+  display: inline-block;
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: mk-dot 1.2s ease-in-out infinite;
+}
+
+.mk-typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.mk-typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes mk-dot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* --- Cast marquee (track holds two identical sets, so -50% is one set) ---- */
+.mk-marquee {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
+}
+
+.mk-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: mk-marquee 55s linear infinite;
+}
+
+.mk-marquee:hover .mk-marquee-track {
+  animation-play-state: paused;
+}
+
+@keyframes mk-marquee {
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+/* --- About-page table of contents (scrollspy sets data-active) ------------ */
+[data-toc] a[data-active="true"] {
+  color: #fff;
+}
+
+[data-toc] a[data-active="true"] .mk-toc-dot {
+  background: linear-gradient(#c084fc, #f472b6);
+  box-shadow: 0 0 12px rgba(244, 114, 182, 0.7);
+  transform: scale(1.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .marketing *,
+  .marketing *::before,
+  .marketing *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+
+  html.js [data-reveal] {
+    opacity: 1;
+    transform: none;
+  }
 }

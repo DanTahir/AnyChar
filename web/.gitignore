@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# raw, full-size generated art (derived assets are built by scripts/build-brand-assets.py)
+/brand-src/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
