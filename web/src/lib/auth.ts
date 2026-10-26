@@ -14,6 +14,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Discord({
       clientId: config.discordClientId,
       clientSecret: config.discordClientSecret,
+      // Discord now returns `iss=https://discord.com` on the OAuth redirect
+      // (RFC 9207). Without an explicit issuer, Auth.js falls back to
+      // "https://authjs.dev" and oauth4webapi rejects the callback.
+      issuer: "https://discord.com",
       authorization: {
         params: { scope: "identify email guilds" },
       },
