@@ -73,6 +73,21 @@ export async function fetchImage(key: string) {
   };
 }
 
+/**
+ * Copies an image object to a new key (download + re-upload; images are <= 2MB).
+ * Returns the content type of the copy, or null if the source is missing.
+ */
+export async function copyImage(srcKey: string, destKey: string): Promise<string | null> {
+  const image = await fetchImage(srcKey);
+  if (!image) return null;
+  await uploadImage(destKey, image.body, image.contentType);
+  return image.contentType;
+}
+
+export function publicCharacterImageKey(publicId: string, ext: string) {
+  return `public-characters/${publicId}/avatar.${ext}`;
+}
+
 export function characterImageKey(ownerId: string, slug: string, ext: string) {
   return `characters/${ownerId}/${slug}/avatar.${ext}`;
 }

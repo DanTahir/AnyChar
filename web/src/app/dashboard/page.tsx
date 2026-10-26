@@ -48,9 +48,14 @@ export default async function DashboardPage() {
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-purple-100">Characters</h2>
-          <Link href="/dashboard/characters/new" className="btn-primary px-3 py-1.5 text-sm">
-            New character
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/dashboard/public" className="btn-secondary px-3 py-1.5 text-sm">
+              Browse public characters
+            </Link>
+            <Link href="/dashboard/characters/new" className="btn-primary px-3 py-1.5 text-sm">
+              New character
+            </Link>
+          </div>
         </div>
         {characters.length === 0 ? (
           <div className="card p-8 text-center">
@@ -71,6 +76,11 @@ export default async function DashboardPage() {
                   {user?.adultContentEnabled && c.adultCharacter === true && (
                     <span className="rounded bg-purple-800/50 px-1.5 py-0.5 text-xs text-purple-200">
                       18+
+                    </span>
+                  )}
+                  {Boolean(c.publicId) && (
+                    <span className="rounded bg-green-900/50 px-1.5 py-0.5 text-xs text-green-300">
+                      Public
                     </span>
                   )}
                 </span>

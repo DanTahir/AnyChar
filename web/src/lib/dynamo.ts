@@ -27,6 +27,10 @@ export function knownSk(ownerId: string, slug: string, knownUserId: string) {
   return `USERID#${ownerId}#CHAR#${slug}#KNOWN#${knownUserId}`;
 }
 
+export function publicCharSk(publicId: string) {
+  return `PUBCHAR#${publicId}`;
+}
+
 export async function getItem(pk: string, sk: string) {
   const resp = await client.send(
     new GetCommand({ TableName: config.dynamoTable, Key: { pk, sk } }),
@@ -57,6 +61,25 @@ export async function queryPkSk(pk: string, skPrefix: string) {
   return resp.Items ?? [];
 }
 
+/** Like queryPkSk but follows LastEvaluatedKey so results past 1MB aren't dropped. */
+export async function queryPkSkAll(pk: string, skPrefix: string) {
+  const items: Record<string, unknown>[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const resp = await client.send(
+      new QueryCommand({
+        TableName: config.dynamoTable,
+        KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
+        ExpressionAttributeValues: { ":pk": pk, ":sk": skPrefix },
+        ExclusiveStartKey: startKey,
+      }),
+    );
+    items.push(...(resp.Items ?? []));
+    startKey = resp.LastEvaluatedKey;
+  } while (startKey);
+  return items;
+}
+
 export async function queryGsi1(gsi1pk: string) {
   const resp = await client.send(
     new QueryCommand({
@@ -73,7 +96,7 @@ export async function updateItem(
   pk: string,
   sk: string,
   updateExpression: string,
-  values: Record<string, unknown>,
+  values?: Record<string, unknown>,
   names?: Record<string, string>,
 ) {
   await client.send(
@@ -81,7 +104,8 @@ export async function updateItem(
       TableName: config.dynamoTable,
       Key: { pk, sk },
       UpdateExpression: updateExpression,
-      ExpressionAttributeValues: values,
+      // DynamoDB rejects an empty ExpressionAttributeValues map (e.g. for REMOVE).
+      ExpressionAttributeValues: values && Object.keys(values).length > 0 ? values : undefined,
       ExpressionAttributeNames: names,
     }),
   );

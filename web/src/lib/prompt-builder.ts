@@ -13,6 +13,17 @@ export const ROLEPLAY_RULES =
   "you, others, or the environment actually look like—not as uploaded files, attachments, " +
   "or pictures sent in chat.";
 
+// Mirrors LOVES_FRAMING / HATES_FRAMING in bot/prompt_builder.py.
+export const LOVES_FRAMING =
+  "Things you love — things you genuinely love doing, having, talking about, and thinking " +
+  "about. They make you light up, and you happily bring them up or steer toward them when it " +
+  "fits the scene";
+
+export const HATES_FRAMING =
+  "Things you hate — things you genuinely hate doing, talking about, hearing about, and " +
+  "thinking about. They sour your mood, you react with real distaste when they come up, and " +
+  "you avoid them or push back on them";
+
 export const REPLY_STYLE_WORDS: Record<string, number> = {
   "one-liner": 50,
   "semi-lit": 150,

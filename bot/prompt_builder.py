@@ -32,6 +32,19 @@ ROLEPLAY_RULES = (
     "and your memories override anything implied by a static description."
 )
 
+# Framing for the character's Loves / Hates fields (mirrored in web/src/lib/prompt-builder.ts).
+LOVES_FRAMING = (
+    "Things you love — things you genuinely love doing, having, talking about, and thinking "
+    "about. They make you light up, and you happily bring them up or steer toward them when it "
+    "fits the scene"
+)
+
+HATES_FRAMING = (
+    "Things you hate — things you genuinely hate doing, talking about, hearing about, and "
+    "thinking about. They sour your mood, you react with real distaste when they come up, and "
+    "you avoid them or push back on them"
+)
+
 REPLY_STYLE_WORDS = {
     "one-liner": 50,
     "semi-lit": 150,
@@ -192,10 +205,15 @@ def build_system_prompt(
             content = ku.get("content") or ""
             parts.append(f"- User ID {uid}: {content}")
 
-    if character.get("good"):
-        parts.append(f"\nWhenever possible, you should: {character['good']}")
-    if character.get("bad"):
-        parts.append(f"You must never: {character['bad']}")
+    # `good` / `bad` are the legacy names for these fields on older characters.
+    loves = (character.get("loves") or character.get("good") or "").strip()
+    hates = (character.get("hates") or character.get("bad") or "").strip()
+    if loves or hates:
+        parts.append("")
+    if loves:
+        parts.append(f"{LOVES_FRAMING}: {loves}")
+    if hates:
+        parts.append(f"{HATES_FRAMING}: {hates}")
 
     # adult_content is true only when the owner has adult content enabled AND the
     # character is marked as an adult character (see main.py).

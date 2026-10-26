@@ -148,8 +148,8 @@ export default function AboutPage() {
               desc: "The heart of the character — personality, background, voice, and how it behaves. The more detail, the more consistent the character.",
             },
             {
-              name: "Should do / Should never do",
-              desc: "Short guidance the character always tries to follow, and hard limits it must avoid.",
+              name: "Loves / Hates",
+              desc: "What the character loves doing, having, talking about, or thinking about — and what it hates doing, talking about, hearing about, or thinking about. Loves light the character up; hates sour its mood.",
             },
             {
               name: "Reply style",

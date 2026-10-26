@@ -125,8 +125,8 @@ export async function createCharacter(
   ownerId: string,
   data: {
     displayName: string;
-    good: string;
-    bad: string;
+    loves: string;
+    hates: string;
     description: string;
     replyStyle: string;
     memoryLevel?: string;
@@ -143,8 +143,8 @@ export async function createCharacter(
     sk: charSk(ownerId, slug),
     slug,
     displayName: data.displayName,
-    good: data.good,
-    bad: data.bad,
+    loves: data.loves,
+    hates: data.hates,
     description: data.description,
     replyStyle: data.replyStyle,
     memoryLevel: data.memoryLevel ?? "medium",
@@ -167,8 +167,8 @@ export async function updateCharacter(
   slug: string,
   data: Partial<{
     displayName: string;
-    good: string;
-    bad: string;
+    loves: string;
+    hates: string;
     description: string;
     replyStyle: string;
     memoryLevel: string;
@@ -177,12 +177,16 @@ export async function updateCharacter(
 ) {
   const char = await getCharacter(ownerId, slug);
   if (!char) throw new Error("Character not found");
-  await putItem({
+  const next: Record<string, unknown> = {
     ...char,
     ...data,
     pk: "USERS",
     sk: charSk(ownerId, slug),
-  });
+  };
+  // Drop the legacy good/bad attributes once their replacements are written.
+  if (data.loves !== undefined) delete next.good;
+  if (data.hates !== undefined) delete next.bad;
+  await putItem(next);
 }
 
 export async function deleteCharacter(ownerId: string, slug: string) {

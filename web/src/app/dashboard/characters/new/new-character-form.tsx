@@ -25,8 +25,8 @@ export default function NewCharacterForm({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         displayName: form.get("displayName"),
-        good: form.get("good"),
-        bad: form.get("bad"),
+        loves: form.get("loves"),
+        hates: form.get("hates"),
         description: form.get("description"),
         replyStyle: form.get("replyStyle"),
         memoryLevel: form.get("memoryLevel"),
@@ -54,15 +54,15 @@ export default function NewCharacterForm({
           maxLength={100}
         />
         <TextArea
-          label="Good (do whenever possible)"
-          help="Things the character should try to do whenever it fits the scene."
-          name="good"
+          label="Loves"
+          help="Things the character loves doing, having, talking about, or thinking about. They light up when these come up."
+          name="loves"
           maxLength={500}
         />
         <TextArea
-          label="Bad (never do)"
-          help="Hard limits — things the character must never do or say."
-          name="bad"
+          label="Hates"
+          help="Things the character hates doing, talking about, hearing about, or thinking about. They react with genuine distaste."
+          name="hates"
           maxLength={500}
         />
         <TextArea

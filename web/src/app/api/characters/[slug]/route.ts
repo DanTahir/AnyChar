@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
 import { fetchDiscordDisplayNames } from "@/lib/discord-bot";
-import { characterSchema } from "@/lib/schemas/character";
+import { unpublishCharacter } from "@/lib/public-characters";
+import { characterSchema, hatesOf, lovesOf } from "@/lib/schemas/character";
 import {
   deleteCharacter,
   getCharacter,
@@ -26,7 +27,7 @@ export async function GET(_req: Request, { params }: Params) {
     const usernames = await fetchDiscordDisplayNames(known.map(idOf));
     const knownUsers = known.map((k) => ({ ...k, displayName: usernames[idOf(k)] }));
     return NextResponse.json({
-      character: char,
+      character: { ...char, loves: lovesOf(char), hates: hatesOf(char) },
       knownUsers,
       ownerId: s.user.id,
       adultContentEnabled: user.adultContentEnabled,
@@ -50,6 +51,12 @@ export async function PUT(req: Request, { params }: Params) {
       ...rest,
       ...(user.adultContentEnabled && adultCharacter !== undefined ? { adultCharacter } : {}),
     });
+    // Adult characters can't be public: pull the public copy if it just became adult.
+    const updated = await getCharacter(s.user.id, slug);
+    if (updated?.adultCharacter === true && updated.publicId) {
+      await unpublishCharacter(s.user.id, slug);
+      return NextResponse.json({ ok: true, unpublished: true });
+    }
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";

@@ -56,6 +56,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                       <Link href="/dashboard/characters/new" className="link-accent">
                         New character
                       </Link>
+                      <Link href="/dashboard/public" className="link-accent">
+                        Public characters
+                      </Link>
                       <Link href="/dashboard/servers" className="link-accent">
                         Servers
                       </Link>

@@ -16,13 +16,14 @@ type KnownUser = {
 type Character = {
   slug: string;
   displayName: string;
-  good?: string;
-  bad?: string;
+  loves?: string;
+  hates?: string;
   description?: string;
   replyStyle?: string;
   memoryLevel?: string;
   adultCharacter?: boolean;
   imageS3Key?: string;
+  publicId?: string;
 };
 
 function FieldShell({
@@ -138,6 +139,10 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
   const [newKnownId, setNewKnownId] = useState("");
   const [showUpdated, setShowUpdated] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest in-flight field save, so publishing waits for edits that were just blurred.
+  const pendingSave = useRef<Promise<unknown>>(Promise.resolve());
+  const [publishing, setPublishing] = useState(false);
+  const [publishMessage, setPublishMessage] = useState("");
 
   const flashUpdated = useCallback(() => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -169,28 +174,70 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
       });
   }, [slug]);
 
-  async function saveCharacterFields(fields: Partial<Character>) {
+  function saveCharacterFields(fields: Partial<Character>) {
+    const p = persistCharacterFields(fields);
+    pendingSave.current = p;
+    return p;
+  }
+
+  async function persistCharacterFields(fields: Partial<Character>) {
     const res = await fetch(`/api/characters/${slug}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         displayName: fields.displayName ?? character?.displayName,
-        good: fields.good ?? character?.good ?? "",
-        bad: fields.bad ?? character?.bad ?? "",
+        loves: fields.loves ?? character?.loves ?? "",
+        hates: fields.hates ?? character?.hates ?? "",
         description: fields.description ?? character?.description ?? "",
         replyStyle: fields.replyStyle ?? character?.replyStyle ?? "semi-lit",
         memoryLevel: fields.memoryLevel ?? character?.memoryLevel ?? "medium",
         adultCharacter: fields.adultCharacter ?? character?.adultCharacter ?? false,
       }),
     });
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setError((await res.json()).error ?? "Save failed");
+      setError(data.error ?? "Save failed");
       return false;
     }
     setError("");
-    setCharacter((c) => (c ? { ...c, ...fields } : c));
+    setCharacter((c) =>
+      c ? { ...c, ...fields, ...(data.unpublished ? { publicId: undefined } : {}) } : c,
+    );
+    if (data.unpublished) {
+      setPublishMessage("Removed from public characters because it is now an adult character.");
+    }
     flashUpdated();
     return true;
+  }
+
+  async function publishCharacter() {
+    setPublishing(true);
+    setPublishMessage("");
+    await pendingSave.current;
+    const res = await fetch(`/api/characters/${slug}/publish`, { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    setPublishing(false);
+    if (!res.ok) {
+      setPublishMessage(data.error ?? "Publishing failed");
+      return;
+    }
+    setCharacter((c) => (c ? { ...c, publicId: data.publicId } : c));
+    setPublishMessage(data.updated ? "Public copy updated." : "Your character is now public.");
+  }
+
+  async function unpublishCharacter() {
+    if (!window.confirm("Remove this character from the public characters page?")) return;
+    setPublishing(true);
+    setPublishMessage("");
+    const res = await fetch(`/api/characters/${slug}/publish`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    setPublishing(false);
+    if (!res.ok) {
+      setPublishMessage(data.error ?? "Removing failed");
+      return;
+    }
+    setCharacter((c) => (c ? { ...c, publicId: undefined } : c));
+    setPublishMessage("Removed from public characters.");
   }
 
   async function uploadCharacterImage(file: File): Promise<string | null> {
@@ -304,33 +351,33 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
           />
         </FieldShell>
         <FieldShell
-          label="Good (do whenever possible)"
-          help="Things the character should try to do whenever it fits the scene."
+          label="Loves"
+          help="Things the character loves doing, having, talking about, or thinking about. They light up when these come up."
         >
           <textarea
-            defaultValue={character.good}
+            defaultValue={character.loves}
             maxLength={500}
             rows={2}
             className="input-field"
             onBlur={(e) => {
-              if (e.target.value !== (character.good ?? "")) {
-                void saveCharacterFields({ good: e.target.value });
+              if (e.target.value !== (character.loves ?? "")) {
+                void saveCharacterFields({ loves: e.target.value });
               }
             }}
           />
         </FieldShell>
         <FieldShell
-          label="Bad (never do)"
-          help="Hard limits — things the character must never do or say."
+          label="Hates"
+          help="Things the character hates doing, talking about, hearing about, or thinking about. They react with genuine distaste."
         >
           <textarea
-            defaultValue={character.bad}
+            defaultValue={character.hates}
             maxLength={500}
             rows={2}
             className="input-field"
             onBlur={(e) => {
-              if (e.target.value !== (character.bad ?? "")) {
-                void saveCharacterFields({ bad: e.target.value });
+              if (e.target.value !== (character.hates ?? "")) {
+                void saveCharacterFields({ hates: e.target.value });
               }
             }}
           />
@@ -420,6 +467,61 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
         onUpload={uploadCharacterImage}
         onSaved={flashUpdated}
       />
+
+      <div className="card space-y-3 p-4">
+        <div>
+          <h3 className="flex items-center gap-2 font-medium text-purple-100">
+            Public sharing
+            {character.publicId && (
+              <span className="rounded bg-green-900/50 px-1.5 py-0.5 text-xs text-green-300">
+                Public
+              </span>
+            )}
+          </h3>
+          <p className="mt-1 text-sm text-purple-300/70">
+            Share a copy of this character on the{" "}
+            <Link href="/dashboard/public" className="link-accent">
+              Public characters
+            </Link>{" "}
+            page so others can add it to their own profile. The name, description, loves, hates,
+            reply style, memory level, and portrait are shared. Known users and memories stay
+            private. The public copy is a snapshot, so press &ldquo;Update public copy&rdquo;
+            after you make changes.
+          </p>
+        </div>
+        {character.adultCharacter ? (
+          <p className="text-sm text-purple-300/60">
+            Adult characters can&apos;t be made public. Uncheck &ldquo;Adult character&rdquo;
+            to share this one.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={publishing}
+              onClick={() => void publishCharacter()}
+              className="btn-primary px-3 py-1.5 text-sm disabled:opacity-50"
+            >
+              {publishing
+                ? "Working…"
+                : character.publicId
+                  ? "Update public copy"
+                  : "Make public"}
+            </button>
+            {character.publicId && (
+              <button
+                type="button"
+                disabled={publishing}
+                onClick={() => void unpublishCharacter()}
+                className="btn-secondary text-sm disabled:opacity-50"
+              >
+                Remove from public
+              </button>
+            )}
+          </div>
+        )}
+        {publishMessage && <p className="text-sm text-purple-200">{publishMessage}</p>}
+      </div>
 
       <section className="space-y-4">
         <div>
