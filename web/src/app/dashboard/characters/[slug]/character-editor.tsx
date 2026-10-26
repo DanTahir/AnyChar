@@ -21,6 +21,7 @@ type Character = {
   description?: string;
   replyStyle?: string;
   memoryLevel?: string;
+  adultCharacter?: boolean;
   imageS3Key?: string;
 };
 
@@ -133,6 +134,7 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
   const [knownUsers, setKnownUsers] = useState<KnownUser[]>([]);
   const [error, setError] = useState("");
   const [ownerId, setOwnerId] = useState("");
+  const [adultContentEnabled, setAdultContentEnabled] = useState(false);
   const [newKnownId, setNewKnownId] = useState("");
   const [showUpdated, setShowUpdated] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -155,6 +157,7 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
       .then((d) => {
         setCharacter(d.character);
         setOwnerId(d.ownerId ?? "");
+        setAdultContentEnabled(Boolean(d.adultContentEnabled));
         setKnownUsers(
           (d.knownUsers ?? []).map((k: KnownUser & { sk: string }) => ({
             knownUserId: k.knownUserId ?? k.sk.split("#KNOWN#")[1],
@@ -176,6 +179,8 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
         bad: fields.bad ?? character?.bad ?? "",
         description: fields.description ?? character?.description ?? "",
         replyStyle: fields.replyStyle ?? character?.replyStyle ?? "semi-lit",
+        memoryLevel: fields.memoryLevel ?? character?.memoryLevel ?? "medium",
+        adultCharacter: fields.adultCharacter ?? character?.adultCharacter ?? false,
       }),
     });
     if (!res.ok) {
@@ -374,6 +379,37 @@ export default function EditCharacterPage({ slug }: { slug: string }) {
             <option value="long">long — More expensive</option>
           </select>
         </FieldShell>
+        <div className="card space-y-2 p-4">
+          <label
+            className={`flex items-start gap-3 ${adultContentEnabled ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(character.adultCharacter)}
+              disabled={!adultContentEnabled}
+              onChange={(e) => void saveCharacterFields({ adultCharacter: e.target.checked })}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-purple-600"
+            />
+            <span>
+              <span className="text-sm font-medium text-purple-100">Adult character</span>
+              <span className="mt-0.5 block text-xs text-purple-300/60">
+                Allow this character to produce mature content, including sexual and violent
+                themes, when it fits the character and scene. Only mark characters who are adults
+                — characters described as under 18 will never produce sexual content.
+              </span>
+            </span>
+          </label>
+          {!adultContentEnabled && (
+            <p className="text-xs text-purple-300/60">
+              Turn on adult content in{" "}
+              <Link href="/dashboard/settings" className="link-accent">
+                Settings
+              </Link>{" "}
+              to use this. Until then, this character keeps things appropriate for a general
+              audience.
+            </p>
+          )}
+        </div>
       </div>
 
       <ImageUploadField

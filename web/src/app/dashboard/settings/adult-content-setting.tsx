@@ -27,8 +27,8 @@ export default function AdultContentSetting({ initialEnabled }: { initialEnabled
       setEnabled(next);
       setNotice(
         next
-          ? "Adult content enabled. Your starred models now show adult-capable picks."
-          : "Adult content disabled. Characters will keep things appropriate for a general audience.",
+          ? "Adult content enabled. Mark individual characters as adult characters on their edit page to allow mature content. Your starred models now show adult-capable picks."
+          : "Adult content disabled. All characters will keep things appropriate for a general audience.",
       );
       return true;
     } catch (e) {
@@ -73,7 +73,9 @@ export default function AdultContentSetting({ initialEnabled }: { initialEnabled
           </h2>
           <p className="mt-1 text-sm text-purple-300/70">
             Allow your characters to produce mature content, including sexual and violent themes,
-            when it fits the character and scene. When enabled, the starred models in your model
+            when it fits the character and scene. Once enabled, mark each character you want this
+            for as an &ldquo;Adult character&rdquo; on its edit page &mdash; unmarked characters stay
+            appropriate for a general audience. When enabled, the starred models in your model
             list switch to top models that support adult content. Characters described as under 18
             will never produce sexual content, regardless of this setting.
           </p>

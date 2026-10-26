@@ -129,6 +129,8 @@ export async function createCharacter(
     bad: string;
     description: string;
     replyStyle: string;
+    memoryLevel?: string;
+    adultCharacter?: boolean;
   },
 ) {
   const slug = slugify(data.displayName);
@@ -145,6 +147,8 @@ export async function createCharacter(
     bad: data.bad,
     description: data.description,
     replyStyle: data.replyStyle,
+    memoryLevel: data.memoryLevel ?? "medium",
+    adultCharacter: data.adultCharacter === true,
     ownerDiscordId: ownerId,
   });
 
@@ -167,6 +171,8 @@ export async function updateCharacter(
     bad: string;
     description: string;
     replyStyle: string;
+    memoryLevel: string;
+    adultCharacter: boolean;
   }>,
 ) {
   const char = await getCharacter(ownerId, slug);

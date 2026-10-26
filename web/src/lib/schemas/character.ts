@@ -10,6 +10,9 @@ export const characterSchema = z.object({
   description: z.string().max(2000).optional().default(""),
   replyStyle: z.enum(replyStyles).default("semi-lit"),
   memoryLevel: z.enum(memoryLevels).default("medium"),
+  // Per-character opt-in to the permissive content policy. Only honoured (and
+  // only writable) when the owner has adult content enabled in Settings.
+  adultCharacter: z.boolean().optional(),
 });
 
 export const knownUserSchema = z.object({

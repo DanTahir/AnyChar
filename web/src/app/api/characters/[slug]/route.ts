@@ -16,7 +16,7 @@ type Params = { params: Promise<{ slug: string }> };
 export async function GET(_req: Request, { params }: Params) {
   try {
     const session = await auth();
-    const { session: s } = await requireApproved(session);
+    const { session: s, user } = await requireApproved(session);
     const { slug } = await params;
     const char = await getCharacter(s.user.id, slug);
     if (!char) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -25,7 +25,12 @@ export async function GET(_req: Request, { params }: Params) {
       (k.knownUserId as string | undefined) ?? String(k.sk ?? "").split("#KNOWN#")[1] ?? "";
     const usernames = await fetchDiscordDisplayNames(known.map(idOf));
     const knownUsers = known.map((k) => ({ ...k, displayName: usernames[idOf(k)] }));
-    return NextResponse.json({ character: char, knownUsers, ownerId: s.user.id });
+    return NextResponse.json({
+      character: char,
+      knownUsers,
+      ownerId: s.user.id,
+      adultContentEnabled: user.adultContentEnabled,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";
     return NextResponse.json({ error: msg }, { status: 401 });
@@ -35,10 +40,16 @@ export async function GET(_req: Request, { params }: Params) {
 export async function PUT(req: Request, { params }: Params) {
   try {
     const session = await auth();
-    const { session: s } = await requireApproved(session);
+    const { session: s, user } = await requireApproved(session);
     const { slug } = await params;
-    const body = characterSchema.parse(await req.json());
-    await updateCharacter(s.user.id, slug, body);
+    const { adultCharacter, ...rest } = characterSchema.parse(await req.json());
+    // The adult flag can only be changed while the owner has adult content
+    // enabled; otherwise the stored value is preserved (and the bot ignores it
+    // anyway, since it also requires the owner's age18plus).
+    await updateCharacter(s.user.id, slug, {
+      ...rest,
+      ...(user.adultContentEnabled && adultCharacter !== undefined ? { adultCharacter } : {}),
+    });
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";

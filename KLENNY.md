@@ -85,7 +85,7 @@ There are no webhooks: replies are normal bot messages, prefixed with `**Name**`
 | pk | sk | Entity |
 |---|---|---|
 | `USERS` | `USERID#{id}` | User: approved/admin, encrypted `openRouterApiKey`, usage/`budgetUsd`, `preferredTextModel`, `age18plus`, `dmCharacterSlug`. GSI1 `APPROVAL#approved\|pending` |
-| `USERS` | `USERID#{owner}#CHAR#{slug}` | Character (`replyStyle`, `memoryLevel`, `imageS3Key`, `appearance`, …) |
+| `USERS` | `USERID#{owner}#CHAR#{slug}` | Character (`replyStyle`, `memoryLevel`, `adultCharacter`, `imageS3Key`, `appearance`, …) |
 | `USERS` | `…#CHAR#{slug}#KNOWN#{userId}` | Known user (owner's own entry is auto-created and cannot be deleted) |
 | `USERS` | `…#CHAR#{slug}#SERVER#{guildId\|DM}#MEMORY#…` / `#MEMORYLT#…` | Short-term / long-term memory |
 | `USERS` | `USERID#{id}#GUILD#{guildId}` | Guild link (GSI1 `GUILD#{guildId}`) |
@@ -116,7 +116,9 @@ These are duplicated across languages. When you change one side, change the othe
 ## Behaviour notes
 
 - **Adult content:** the user's `age18plus` attribute is set only through `POST /api/user/adult-content` (re-enabling requires `confirmedAdult === true`).
-  - The bot uses `PLATFORM_CONTENT_POLICY` when the character owner has the flag, otherwise `RESTRICTED_CONTENT_POLICY` (`prompt_builder.py`).
+  - The bot uses `PLATFORM_CONTENT_POLICY` only when the owner has `age18plus` **and** the character has `adultCharacter: true`; otherwise `RESTRICTED_CONTENT_POLICY` (`main.py` → `prompt_builder.py`).
+  - `adultCharacter` is a per-character checkbox in the editor/new form. The API only lets the owner change it while their adult content is on, and keeps the stored value otherwise.
+  - `bot/scripts/mark_adult_characters.py [--dry-run]` was a one-time migration that marked all characters of the adult users who existed then.
   - Never relax the rule that bans sexual content involving under-18 characters.
 - **Model resolution** (`_resolve_model`): explicit model → vision model → user's `preferredTextModel` → `OPENROUTER_DEFAULT_TEXT_MODEL`.
 - **Prompt caching:** explicit `cache_control` markers are only added for `_EXPLICIT_CACHE_PREFIXES` / `_EXPLICIT_CACHE_EXACT` (anthropic/, qwen/, deepseek-v3.2). Other model families cache implicitly. Review this list when the model lineup changes.

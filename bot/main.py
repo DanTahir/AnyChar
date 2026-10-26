@@ -357,7 +357,11 @@ async def generate_reply(
             ku, config.owner_discord_id, config.character_slug, config.api_key
         )
 
-    owner_age18plus = bool(config.owner_user.get("age18plus"))
+    # Permissive content requires BOTH: the owner has opted into adult content
+    # (age18plus) AND this specific character is marked as an adult character.
+    adult_content = bool(config.owner_user.get("age18plus")) and bool(
+        config.character.get("adultCharacter")
+    )
     other_characters = []
     for c in other_configs:
         oc = await ensure_character_appearance(
@@ -376,7 +380,7 @@ async def generate_reply(
         known_users,
         lt,
         st,
-        owner_age18plus,
+        adult_content,
         has_live_conversation=bool(chain),
         other_characters=other_characters or None,
         area_context=area_context,

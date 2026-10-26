@@ -107,7 +107,7 @@ def build_system_prompt(
     known_users: list[dict[str, Any]],
     long_term_memories: list[dict[str, Any]],
     short_term_memories: list[dict[str, Any]],
-    age18plus: bool = False,
+    adult_content: bool = False,
     has_live_conversation: bool = False,
     other_characters: list[dict[str, Any]] | None = None,
     area_context: str | None = None,
@@ -197,7 +197,9 @@ def build_system_prompt(
     if character.get("bad"):
         parts.append(f"You must never: {character['bad']}")
 
-    content_policy = PLATFORM_CONTENT_POLICY if age18plus else RESTRICTED_CONTENT_POLICY
+    # adult_content is true only when the owner has adult content enabled AND the
+    # character is marked as an adult character (see main.py).
+    content_policy = PLATFORM_CONTENT_POLICY if adult_content else RESTRICTED_CONTENT_POLICY
     parts.append(f"\nPlatform content policy: {content_policy}")
     parts.append(f"\nRoleplay rules: {ROLEPLAY_RULES}")
     parts.append(f"\nKeep the scene moving: {ANTI_REPETITION_RULE}")

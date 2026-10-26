@@ -19,9 +19,13 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const session = await auth();
-    const { session: s } = await requireApproved(session);
+    const { session: s, user } = await requireApproved(session);
     const body = characterSchema.parse(await req.json());
-    const slug = await createCharacter(s.user.id, body);
+    const slug = await createCharacter(s.user.id, {
+      ...body,
+      // Only owners with adult content enabled may mark a character as adult.
+      adultCharacter: user.adultContentEnabled && body.adultCharacter === true,
+    });
     return NextResponse.json({ slug });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";

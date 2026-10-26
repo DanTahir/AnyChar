@@ -66,7 +66,14 @@ export default async function DashboardPage() {
           <ul className="card divide-y divide-purple-900/40">
             {characters.map((c) => (
               <li key={c.slug as string} className="flex items-center justify-between px-4 py-3">
-                <span>{c.displayName as string}</span>
+                <span className="flex items-center gap-2">
+                  {c.displayName as string}
+                  {user?.adultContentEnabled && c.adultCharacter === true && (
+                    <span className="rounded bg-purple-800/50 px-1.5 py-0.5 text-xs text-purple-200">
+                      18+
+                    </span>
+                  )}
+                </span>
                 <Link href={`/dashboard/characters/${c.slug}`} className="link-accent text-sm">
                   Edit
                 </Link>
