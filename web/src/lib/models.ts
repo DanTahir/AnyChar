@@ -38,6 +38,11 @@ export const DEFAULT_TEXT_MODEL = "mistralai/mistral-small-2603";
 export const VISION_MODEL =
   process.env.OPENROUTER_VISION_MODEL ?? "meta-llama/llama-4-maverick";
 
+// Fallbacks sent in OpenRouter's `models` array after VISION_MODEL so a
+// rate-limited or down provider fails over in the same request. Mirrors
+// OPENROUTER_VISION_FALLBACK_MODELS in bot/config.py.
+export const VISION_FALLBACK_MODELS = ["deepseek/deepseek-v4.1-flash"];
+
 export type OpenRouterModel = {
   id: string;
   name: string;

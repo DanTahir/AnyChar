@@ -1,5 +1,5 @@
 import { decryptApiKey } from "./crypto";
-import { VISION_MODEL } from "./models";
+import { VISION_FALLBACK_MODELS, VISION_MODEL } from "./models";
 import { updateItem, userSk } from "./dynamo";
 
 const CHARACTER_SYSTEM =
@@ -47,6 +47,10 @@ async function visionCompletion(
     },
     body: JSON.stringify({
       model: VISION_MODEL,
+      models: [
+        VISION_MODEL,
+        ...VISION_FALLBACK_MODELS.filter((m) => m !== VISION_MODEL),
+      ],
       max_tokens: maxTokens,
       messages: [
         { role: "system", content: system },

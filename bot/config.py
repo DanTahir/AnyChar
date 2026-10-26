@@ -21,6 +21,29 @@ OPENROUTER_DEFAULT_TEXT_MODEL = os.getenv(
     "OPENROUTER_DEFAULT_TEXT_MODEL", "mistralai/mistral-small-2603"
 )
 
+
+def _model_list(env_name: str, default: list[str]) -> list[str]:
+    raw = os.getenv(env_name)
+    if raw is None:
+        return default
+    return [m.strip() for m in raw.split(",") if m.strip()]
+
+
+# Fallback models sent in OpenRouter's `models` array after the chosen model.
+# OpenRouter fails over to them server-side (in the same request) when the
+# chosen model is rate-limited upstream, down, or refuses. Picked for many
+# providers (so they are rarely saturated), low price, and no OpenRouter
+# moderation (so adult-mode characters still work). Mirrored for vision in
+# web/src/lib/models.ts (VISION_FALLBACK_MODELS).
+OPENROUTER_TEXT_FALLBACK_MODELS = _model_list(
+    "OPENROUTER_TEXT_FALLBACK_MODELS",
+    ["deepseek/deepseek-v4.1-flash", "z-ai/glm-5.3"],
+)
+OPENROUTER_VISION_FALLBACK_MODELS = _model_list(
+    "OPENROUTER_VISION_FALLBACK_MODELS",
+    ["deepseek/deepseek-v4.1-flash"],
+)
+
 # Starred/pinned models shown at the top of the dashboard's model dropdown, in order.
 # Which list applies depends on the user's adult-content setting (the `age18plus`
 # attribute). Mirrored in web/src/lib/models.ts — keep both lists in sync.

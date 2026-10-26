@@ -7,12 +7,23 @@ from typing import Any
 import httpx
 
 import model_catalog
-from config import OPENROUTER_DEFAULT_TEXT_MODEL, OPENROUTER_VISION_MODEL
+from config import (
+    OPENROUTER_DEFAULT_TEXT_MODEL,
+    OPENROUTER_TEXT_FALLBACK_MODELS,
+    OPENROUTER_VISION_FALLBACK_MODELS,
+    OPENROUTER_VISION_MODEL,
+)
 from dynamo import get_user, update_usage
 from usage import is_over_budget
 
 _CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
-_MAX_RETRIES = 3
+# Model fallbacks (the `models` array) already fail over server-side within a
+# single request, so a 429 here means the whole chain is saturated. Retry once
+# after a short pause rather than making the user wait through long sleeps.
+_MAX_ATTEMPTS = 2
+_MAX_RETRY_SLEEP_SECONDS = 3.0
+# Total entries in the `models` array (chosen model + fallbacks).
+_MAX_MODEL_CHAIN = 3
 _BILLING_MULTIPLIER = 2.0
 
 # Model families that require an explicit `cache_control` marker to opt into
@@ -98,6 +109,32 @@ def _resolve_model(
     return preferred or OPENROUTER_DEFAULT_TEXT_MODEL
 
 
+def _model_chain(chosen: str, *, use_vision: bool) -> list[str]:
+    """Chosen model first, then de-duplicated fallbacks, capped in length."""
+    fallbacks = (
+        OPENROUTER_VISION_FALLBACK_MODELS if use_vision else OPENROUTER_TEXT_FALLBACK_MODELS
+    )
+    chain = [chosen]
+    for candidate in fallbacks:
+        if candidate not in chain:
+            chain.append(candidate)
+    return chain[:_MAX_MODEL_CHAIN]
+
+
+def _error_summary(resp: httpx.Response) -> str:
+    """Compact description of an OpenRouter error body for logs."""
+    try:
+        err = resp.json().get("error") or {}
+        meta = err.get("metadata") or {}
+        parts = [str(err.get("message") or "")]
+        for field in ("provider_name", "limit_source", "raw"):
+            if meta.get(field):
+                parts.append(f"{field}={meta[field]}")
+        return " | ".join(p for p in parts if p)[:500]
+    except Exception:
+        return resp.text[:500]
+
+
 async def chat_completion(
     *,
     api_key: str,
@@ -129,11 +166,14 @@ async def chat_completion(
     if isExplicitCacheFamily(chosen):
         messages = _apply_cache_control(messages)
 
+    chain = _model_chain(chosen, use_vision=use_vision)
     body: dict[str, Any] = {
         "model": chosen,
         "max_tokens": max_tokens,
         "messages": messages,
     }
+    if len(chain) > 1:
+        body["models"] = chain
     if session_id:
         body["session_id"] = session_id
 
@@ -144,28 +184,37 @@ async def chat_completion(
 
     last_exc: RateLimitError | None = None
     async with httpx.AsyncClient(timeout=120.0) as client:
-        for attempt in range(_MAX_RETRIES):
+        for attempt in range(_MAX_ATTEMPTS):
             resp = await client.post(_CHAT_URL, headers=headers, json=body)
             if resp.status_code == 429:
                 last_exc = RateLimitError(
-                    f"OpenRouter rate limited (attempt {attempt + 1})",
+                    f"OpenRouter rate limited (attempt {attempt + 1}/{_MAX_ATTEMPTS}, "
+                    f"models={chain}): {_error_summary(resp)}",
                     retry_after_seconds=_retry_after_seconds(resp),
                 )
-                if attempt + 1 >= _MAX_RETRIES:
+                if attempt + 1 >= _MAX_ATTEMPTS:
                     raise last_exc
-                await asyncio.sleep(last_exc.retry_after_seconds)
+                await asyncio.sleep(
+                    min(last_exc.retry_after_seconds, _MAX_RETRY_SLEEP_SECONDS)
+                )
                 continue
             if resp.status_code >= 400:
                 raise OpenRouterAPIError(
-                    f"OpenRouter API error {resp.status_code}: {resp.text}"
+                    f"OpenRouter API error {resp.status_code} (models={chain}): "
+                    f"{_error_summary(resp)}"
                 )
 
             data = resp.json()
+            # With fallbacks, the model that actually answered may differ from
+            # `chosen`; OpenRouter bills (and reports) the one used.
+            used_model = data.get("model") or chosen
+            if used_model != chosen:
+                print(f"OpenRouter fallback: {chosen} -> {used_model}")
             usage = data.get("usage") or {}
             if charge_usage:
                 await _bill_usage(
                     owner_discord_id=owner_discord_id,
-                    model=chosen,
+                    model=used_model,
                     usage=usage,
                 )
             choices = data.get("choices") or [{}]
