@@ -25,7 +25,10 @@ export type AppUser = {
   usageCacheWriteTokens: number;
   budgetUsd: number;
   preferredTextModel?: string;
-  age18plus?: boolean;
+  // Backed by the `age18plus` DynamoDB attribute (read by the bot to pick the
+  // content policy). Only true once the user has enabled adult content in
+  // Settings and confirmed they are 18+ and of legal age of majority.
+  adultContentEnabled: boolean;
 };
 
 export async function getAppUser(discordId: string): Promise<AppUser | null> {
@@ -43,17 +46,26 @@ export async function getAppUser(discordId: string): Promise<AppUser | null> {
     budgetUsd: Number(item.budgetUsd ?? config.budgetUsd),
     preferredTextModel:
       typeof item.preferredTextModel === "string" ? item.preferredTextModel : undefined,
-    age18plus: typeof item.age18plus === "boolean" ? item.age18plus : undefined,
+    adultContentEnabled: item.age18plus === true,
   };
 }
 
-export async function setUserAge18Plus(discordId: string, age18plus: boolean) {
-  await updateItem(
-    "USERS",
-    userSk(discordId),
-    "SET age18plus = :v",
-    { ":v": age18plus },
-  );
+/**
+ * Enables/disables adult content for a user. Enabling must only be called
+ * after the user has explicitly confirmed they are 18+ and of legal age of
+ * majority; the confirmation time is recorded alongside the flag.
+ */
+export async function setAdultContentEnabled(discordId: string, enabled: boolean) {
+  if (enabled) {
+    await updateItem(
+      "USERS",
+      userSk(discordId),
+      "SET age18plus = :v, adultContentConfirmedAt = :t",
+      { ":v": true, ":t": new Date().toISOString() },
+    );
+  } else {
+    await updateItem("USERS", userSk(discordId), "SET age18plus = :v", { ":v": false });
+  }
 }
 
 export async function raiseUserBudget(discordId: string, amount: number) {

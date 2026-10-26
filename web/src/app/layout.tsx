@@ -62,6 +62,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                       <Link href="/dashboard/dm" className="link-accent">
                         DM
                       </Link>
+                      <Link href="/dashboard/settings" className="link-accent">
+                        Settings
+                      </Link>
                     </>
                   )}
                   {session.user.admin && (

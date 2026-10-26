@@ -22,12 +22,28 @@ OPENROUTER_DEFAULT_TEXT_MODEL = os.getenv(
 )
 
 # Starred/pinned models shown at the top of the dashboard's model dropdown, in order.
-# Mirrored in web/src/lib/models.ts — keep both lists in sync if this ever changes.
-STARRED_MODEL_IDS = [
-    "mistralai/mistral-small-2603",
-    "deepseek/deepseek-v4-pro",
-    "aion-labs/aion-3.0",
-    "meta-llama/llama-4-maverick",
+# Which list applies depends on the user's adult-content setting (the `age18plus`
+# attribute). Mirrored in web/src/lib/models.ts — keep both lists in sync.
+
+# Adult content OFF (default): best frontier models, regardless of adult support.
+DEFAULT_STARRED_MODEL_IDS = [
+    "anthropic/claude-opus-5.5",
+    "anthropic/claude-sonnet-5.5",
+    "openai/gpt-6.1-sol",
+    "google/gemini-4-argon",
+    "x-ai/grok-4.7",
+    "moonshotai/kimi-k3.1-pro",
+    "deepseek/deepseek-v4-pro-0813",
+]
+
+# Adult content ON: strongest models that are unmoderated on OpenRouter and
+# permissive at the model level, so they will actually produce adult content.
+ADULT_STARRED_MODEL_IDS = [
+    "aion-labs/aion-3.5",
+    "deepseek/deepseek-v4-pro-0813",
+    "x-ai/grok-4.7",
+    "mistralai/mistral-large-4-0",
+    "z-ai/glm-5.3",
 ]
 
 SITE_URL = os.getenv("SITE_URL", "http://localhost:3000")

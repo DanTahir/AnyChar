@@ -1,11 +1,35 @@
 // Starred/pinned models shown at the top of the dashboard's model dropdown, in
-// order. Mirrored in bot/config.py's STARRED_MODEL_IDS — keep both in sync.
-export const STARRED_MODEL_IDS = [
-  "mistralai/mistral-small-2603",
-  "deepseek/deepseek-v4-pro",
-  "aion-labs/aion-3.0",
-  "meta-llama/llama-4-maverick",
+// order. Which list applies depends on the user's "adult content" setting.
+// Mirrored in bot/config.py — keep both in sync.
+
+// Adult content OFF (the default): the best frontier models available,
+// regardless of whether they will produce adult content.
+export const DEFAULT_STARRED_MODEL_IDS = [
+  "anthropic/claude-opus-5.5",
+  "anthropic/claude-sonnet-5.5",
+  "openai/gpt-6.1-sol",
+  "google/gemini-4-argon",
+  "x-ai/grok-4.7",
+  "moonshotai/kimi-k3.1-pro",
+  "deepseek/deepseek-v4-pro-0813",
 ];
+
+// Adult content ON: the strongest models that will actually produce adult
+// content. Every entry must be (a) unmoderated on OpenRouter
+// (top_provider.is_moderated === false) and (b) permissive at the model level.
+// That rules out Anthropic/OpenAI (moderated by OpenRouter) and Google (the
+// model itself refuses explicit content even though it is unmoderated).
+export const ADULT_STARRED_MODEL_IDS = [
+  "aion-labs/aion-3.5",
+  "deepseek/deepseek-v4-pro-0813",
+  "x-ai/grok-4.7",
+  "mistralai/mistral-large-4-0",
+  "z-ai/glm-5.3",
+];
+
+export function starredModelIds(adultContentEnabled: boolean): string[] {
+  return adultContentEnabled ? ADULT_STARRED_MODEL_IDS : DEFAULT_STARRED_MODEL_IDS;
+}
 
 // Default text model for users who haven't picked one yet.
 export const DEFAULT_TEXT_MODEL = "mistralai/mistral-small-2603";
@@ -23,6 +47,8 @@ export type OpenRouterModel = {
   cacheWritePrice: number | null;
   supportsCaching: boolean;
   starred: boolean;
+  // OpenRouter applies its own content moderation to this model.
+  moderated: boolean;
   contextLength: number;
 };
 
@@ -31,6 +57,7 @@ type RawOpenRouterModel = {
   name?: string;
   context_length?: number;
   architecture?: { input_modalities?: string[]; output_modalities?: string[] };
+  top_provider?: { is_moderated?: boolean };
   pricing?: {
     prompt?: string | number;
     completion?: string | number;
@@ -57,8 +84,16 @@ function toOptionalNumber(v: string | number | null | undefined): number | null 
  * pricing (including cache pricing) as a proxy for "does the cheapest
  * provider for this model support caching" without needing a separate
  * /models/{author}/{slug}/endpoints call per model.
+ *
+ * `adultContent` selects which starred list is pinned to the top. In adult
+ * mode a starred model is additionally dropped from the pinned set if
+ * OpenRouter reports it as moderated, so a catalog change can never pin a
+ * model that would refuse adult content.
  */
-export async function fetchOpenRouterModels(): Promise<OpenRouterModel[]> {
+export async function fetchOpenRouterModels(
+  { adultContent = false }: { adultContent?: boolean } = {},
+): Promise<OpenRouterModel[]> {
+  const starredIds = starredModelIds(adultContent);
   const resp = await fetch("https://openrouter.ai/api/v1/models", {
     next: { revalidate: 600 },
   });
@@ -78,6 +113,7 @@ export async function fetchOpenRouterModels(): Promise<OpenRouterModel[]> {
       const id = String(m.id ?? "");
       const pricing = m.pricing ?? {};
       const cacheReadPrice = toOptionalNumber(pricing.input_cache_read);
+      const moderated = Boolean(m.top_provider?.is_moderated);
       return {
         id,
         name: String(m.name ?? id),
@@ -86,7 +122,8 @@ export async function fetchOpenRouterModels(): Promise<OpenRouterModel[]> {
         cacheReadPrice,
         cacheWritePrice: toOptionalNumber(pricing.input_cache_write),
         supportsCaching: cacheReadPrice !== null,
-        starred: STARRED_MODEL_IDS.includes(id),
+        starred: starredIds.includes(id) && !(adultContent && moderated),
+        moderated,
         contextLength: Number(m.context_length ?? 0),
       };
     })
@@ -94,7 +131,7 @@ export async function fetchOpenRouterModels(): Promise<OpenRouterModel[]> {
 
   models.sort((a, b) => {
     if (a.starred && b.starred) {
-      return STARRED_MODEL_IDS.indexOf(a.id) - STARRED_MODEL_IDS.indexOf(b.id);
+      return starredIds.indexOf(a.id) - starredIds.indexOf(b.id);
     }
     if (a.starred) return -1;
     if (b.starred) return 1;

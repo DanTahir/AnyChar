@@ -5,7 +5,6 @@ import { auth } from "@/lib/auth";
 import { DEFAULT_TEXT_MODEL } from "@/lib/models";
 import { getAppUser, listCharacters } from "@/lib/users";
 
-import AgeGate from "./age-gate";
 import ModelSelector from "./model-selector";
 
 export default async function DashboardPage() {
@@ -14,9 +13,6 @@ export default async function DashboardPage() {
   if (!session.user.approved) redirect("/pending");
 
   const user = await getAppUser(session.user.id);
-  if (user && user.age18plus === undefined) {
-    return <AgeGate />;
-  }
   const characters = await listCharacters(session.user.id);
 
   return (
@@ -39,6 +35,14 @@ export default async function DashboardPage() {
           </p>
         </div>
         <ModelSelector currentModel={user?.preferredTextModel ?? DEFAULT_TEXT_MODEL} />
+        <p className="text-xs text-purple-300/60">
+          {user?.adultContentEnabled
+            ? "Adult content is on — \u2605 starred models are top picks that support adult content."
+            : "\u2605 starred models are top frontier picks."}{" "}
+          <Link href="/dashboard/settings" className="link-accent">
+            Content settings
+          </Link>
+        </p>
       </section>
 
       <section className="space-y-4">
