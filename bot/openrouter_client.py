@@ -35,6 +35,11 @@ _BILLING_MULTIPLIER = 2.0
 _EXPLICIT_CACHE_PREFIXES = ("anthropic/", "qwen/")
 _EXPLICIT_CACHE_EXACT = {"deepseek/deepseek-v3.2"}
 
+# Reasoning models whose hidden thinking adds a lot of latency and cost (500-1500
+# reasoning tokens even for a one-line reply) without improving roleplay output.
+# Reasoning is disabled for these via OpenRouter's `reasoning` parameter.
+_NO_REASONING_MODELS = {"mistralai/mistral-large-4-0"}
+
 
 class RateLimitError(Exception):
     """Raised when OpenRouter returns HTTP 429."""
@@ -179,6 +184,8 @@ async def chat_completion(
     }
     if len(chain) > 1:
         body["models"] = chain
+    if chosen in _NO_REASONING_MODELS:
+        body["reasoning"] = {"enabled": False}
     if session_id:
         body["session_id"] = session_id
 
@@ -224,6 +231,14 @@ async def chat_completion(
                 )
             choices = data.get("choices") or [{}]
             content = (choices[0].get("message") or {}).get("content") or ""
+            if not content.strip():
+                details = usage.get("completion_tokens_details") or {}
+                print(
+                    f"OpenRouter empty content: model={used_model} "
+                    f"finish={choices[0].get('finish_reason')} "
+                    f"completion_tokens={usage.get('completion_tokens')} "
+                    f"reasoning_tokens={details.get('reasoning_tokens')}"
+                )
             return content.strip()
 
     if last_exc:
