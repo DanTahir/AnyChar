@@ -8,6 +8,7 @@ import httpx
 
 import model_catalog
 from config import (
+    OPENROUTER_DEFAULT_ADULT_TEXT_MODEL,
     OPENROUTER_DEFAULT_TEXT_MODEL,
     OPENROUTER_TEXT_FALLBACK_MODELS,
     OPENROUTER_VISION_FALLBACK_MODELS,
@@ -104,9 +105,13 @@ def _resolve_model(
         return model
     if use_vision:
         return OPENROUTER_VISION_MODEL
-    user = get_user(owner_discord_id)
-    preferred = (user or {}).get("preferredTextModel")
-    return preferred or OPENROUTER_DEFAULT_TEXT_MODEL
+    user = get_user(owner_discord_id) or {}
+    preferred = user.get("preferredTextModel")
+    if preferred:
+        return preferred
+    if user.get("age18plus") is True:
+        return OPENROUTER_DEFAULT_ADULT_TEXT_MODEL
+    return OPENROUTER_DEFAULT_TEXT_MODEL
 
 
 def _model_chain(chosen: str, *, use_vision: bool) -> list[str]:

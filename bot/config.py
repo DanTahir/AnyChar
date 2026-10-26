@@ -20,6 +20,12 @@ OPENROUTER_VISION_MODEL = os.getenv(
 OPENROUTER_DEFAULT_TEXT_MODEL = os.getenv(
     "OPENROUTER_DEFAULT_TEXT_MODEL", "mistralai/mistral-small-2603"
 )
+# Default for users with adult content enabled (`age18plus`) who haven't picked
+# a model. Must be unmoderated on OpenRouter and permissive at the model level.
+# Mirrored in web/src/lib/models.ts (DEFAULT_ADULT_TEXT_MODEL).
+OPENROUTER_DEFAULT_ADULT_TEXT_MODEL = os.getenv(
+    "OPENROUTER_DEFAULT_ADULT_TEXT_MODEL", "mistralai/mistral-large-4-0"
+)
 
 
 def _model_list(env_name: str, default: list[str]) -> list[str]:

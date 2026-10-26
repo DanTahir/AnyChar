@@ -34,6 +34,15 @@ export function starredModelIds(adultContentEnabled: boolean): string[] {
 // Default text model for users who haven't picked one yet.
 export const DEFAULT_TEXT_MODEL = "mistralai/mistral-small-2603";
 
+// Default for users with adult content enabled who haven't picked a model.
+// Must satisfy the same rules as ADULT_STARRED_MODEL_IDS. Mirrors
+// OPENROUTER_DEFAULT_ADULT_TEXT_MODEL in bot/config.py.
+export const DEFAULT_ADULT_TEXT_MODEL = "mistralai/mistral-large-4-0";
+
+export function defaultTextModel(adultContentEnabled: boolean): string {
+  return adultContentEnabled ? DEFAULT_ADULT_TEXT_MODEL : DEFAULT_TEXT_MODEL;
+}
+
 // Vision is always Llama 4 Maverick — not user-selectable.
 export const VISION_MODEL =
   process.env.OPENROUTER_VISION_MODEL ?? "meta-llama/llama-4-maverick";

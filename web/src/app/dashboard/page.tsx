@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
-import { DEFAULT_TEXT_MODEL } from "@/lib/models";
+import { defaultTextModel } from "@/lib/models";
 import { getAppUser, listCharacters } from "@/lib/users";
 
 import ModelSelector from "./model-selector";
@@ -34,7 +34,11 @@ export default async function DashboardPage() {
             cap
           </p>
         </div>
-        <ModelSelector currentModel={user?.preferredTextModel ?? DEFAULT_TEXT_MODEL} />
+        <ModelSelector
+          currentModel={
+            user?.preferredTextModel ?? defaultTextModel(user?.adultContentEnabled ?? false)
+          }
+        />
         <p className="text-xs text-purple-300/60">
           {user?.adultContentEnabled
             ? "Adult content is on — \u2605 starred models are top picks that support adult content."
