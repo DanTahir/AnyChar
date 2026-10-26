@@ -120,7 +120,7 @@ These are duplicated across languages. When you change one side, change the othe
   - `adultCharacter` is a per-character checkbox in the editor/new form. The API only lets the owner change it while their adult content is on, and keeps the stored value otherwise.
   - `bot/scripts/mark_adult_characters.py [--dry-run]` was a one-time migration that marked all characters of the adult users who existed then.
   - Never relax the rule that bans sexual content involving under-18 characters.
-- **Model resolution** (`_resolve_model`): explicit model → vision model → user's `preferredTextModel` → `OPENROUTER_DEFAULT_ADULT_TEXT_MODEL` (Mistral Large, if `age18plus`) → `OPENROUTER_DEFAULT_TEXT_MODEL` (Mistral Small). Web mirrors this via `defaultTextModel()` in `web/src/lib/models.ts`.
+- **Model resolution** (`_resolve_model`): explicit model → vision model → user's `preferredTextModel` → `OPENROUTER_DEFAULT_ADULT_TEXT_MODEL` (Mistral Large, if `age18plus`) → `OPENROUTER_DEFAULT_TEXT_MODEL` (Claude Sonnet 5.5). Web mirrors this via `defaultTextModel()` in `web/src/lib/models.ts`.
 - **Prompt caching:** explicit `cache_control` markers are only added for `_EXPLICIT_CACHE_PREFIXES` / `_EXPLICIT_CACHE_EXACT` (anthropic/, qwen/, deepseek-v3.2). Other model families cache implicitly. Review this list when the model lineup changes.
 - **Billing:** OpenRouter's `usage.cost` × 2 goes into `usageCostUsd`; catalog pricing is the fallback. The default budget is $10, and admins raise it through `/api/admin/raise-budget`.
 - **Memory compaction:** token estimate is chars/4. When a tier exceeds `st_max`/`lt_max` (5k/10k/20k for short/medium/long), the oldest items are LLM-summarised down to the keep size. Near-duplicate summaries are skipped.

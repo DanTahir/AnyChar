@@ -31,8 +31,9 @@ export function starredModelIds(adultContentEnabled: boolean): string[] {
   return adultContentEnabled ? ADULT_STARRED_MODEL_IDS : DEFAULT_STARRED_MODEL_IDS;
 }
 
-// Default text model for users who haven't picked one yet.
-export const DEFAULT_TEXT_MODEL = "mistralai/mistral-small-2603";
+// Default text model for users who haven't picked one yet (adult content off).
+// Mirrors OPENROUTER_DEFAULT_TEXT_MODEL in bot/config.py.
+export const DEFAULT_TEXT_MODEL = "anthropic/claude-sonnet-5.5";
 
 // Default for users with adult content enabled who haven't picked a model.
 // Must satisfy the same rules as ADULT_STARRED_MODEL_IDS. Mirrors

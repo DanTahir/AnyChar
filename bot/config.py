@@ -16,9 +16,10 @@ TOKEN = os.getenv("TOKEN", "")
 OPENROUTER_VISION_MODEL = os.getenv(
     "OPENROUTER_VISION_MODEL", "meta-llama/llama-4-maverick"
 )
-# Default text model when a user hasn't picked one on the dashboard yet.
+# Default text model when a user hasn't picked one on the dashboard yet (adult
+# content off). Mirrored in web/src/lib/models.ts (DEFAULT_TEXT_MODEL).
 OPENROUTER_DEFAULT_TEXT_MODEL = os.getenv(
-    "OPENROUTER_DEFAULT_TEXT_MODEL", "mistralai/mistral-small-2603"
+    "OPENROUTER_DEFAULT_TEXT_MODEL", "anthropic/claude-sonnet-5.5"
 )
 # Default for users with adult content enabled (`age18plus`) who haven't picked
 # a model. Must be unmoderated on OpenRouter and permissive at the model level.
