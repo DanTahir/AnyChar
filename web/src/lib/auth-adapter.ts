@@ -40,6 +40,10 @@ export function AnyCharAdapter(): Adapter {
   return {
     async createUser(user) {
       const discordId = user.id!;
+      // The signIn callback may already have written this user's item, and an
+      // existing user can land here if their account link is missing. Merge
+      // over what's stored so settings like `age18plus` are never wiped.
+      const existing = (await getItem("USERS", userSk(discordId))) ?? {};
       const item: Record<string, unknown> = {
         pk: "USERS",
         sk: userSk(discordId),
@@ -55,19 +59,26 @@ export function AnyCharAdapter(): Adapter {
         gsi1sk: userSk(discordId),
         usageInputTokens: 0,
         usageOutputTokens: 0,
+        ...existing,
       };
+      // Defaults only fill gaps; keep profile fields fresh from Discord.
+      if (user.name) item.name = user.name;
+      if (user.email) item.email = user.email;
+      if (user.image) item.image = user.image;
 
       // New users are auto-approved on their first login. If OpenRouter key
       // provisioning fails for any reason, fall back to leaving the user
       // pending so an admin can approve them manually.
-      try {
-        const { key, keyId } = await createOpenRouterKey(discordId);
-        item.approved = true;
-        item.gsi1pk = "APPROVAL#approved";
-        item.openRouterApiKey = encryptApiKey(key);
-        item.openRouterKeyId = keyId;
-      } catch (err) {
-        console.error("Auto-approval failed for new user, leaving pending:", err);
+      if (!(item.approved && item.openRouterApiKey)) {
+        try {
+          const { key, keyId } = await createOpenRouterKey(discordId);
+          item.approved = true;
+          item.gsi1pk = "APPROVAL#approved";
+          item.openRouterApiKey = encryptApiKey(key);
+          item.openRouterKeyId = keyId;
+        } catch (err) {
+          console.error("Auto-approval failed for new user, leaving pending:", err);
+        }
       }
 
       await putItem(item);
