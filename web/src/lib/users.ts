@@ -2,6 +2,7 @@ import type { Session } from "next-auth";
 
 import { config } from "./config";
 import {
+  batchDeleteItems,
   charSk,
   deleteItem,
   getItem,
@@ -9,9 +10,11 @@ import {
   putItem,
   queryGsi1,
   queryPkSk,
+  queryPkSkAll,
   updateItem,
   userSk,
 } from "./dynamo";
+import { characterImagePrefix, deleteImagePrefix } from "./s3";
 import { knownUserMaxLength, slugify } from "./schemas/character";
 
 export type AppUser = {
@@ -189,12 +192,59 @@ export async function updateCharacter(
   await putItem(next);
 }
 
-export async function deleteCharacter(ownerId: string, slug: string) {
-  const known = await listKnownUsers(ownerId, slug);
-  for (const k of known) {
-    await deleteItem("USERS", k.sk as string);
+/** A guild whose active-character list changed because a character was deleted. */
+export type GuildAfterCharacterDelete = { guildId: string; remainingNames: string[] };
+
+/**
+ * Permanently deletes a character and everything uniquely tied to it:
+ * - every sub-item under USERID#{owner}#CHAR#{slug}# (known users, short- and
+ *   long-term memories in every server/DM),
+ * - all images under characters/{owner}/{slug}/ (portrait, known-user images),
+ * - its entry in the activeCharacters list of the owner's linked guilds,
+ * - the owner's DM-character selection, if it points at this character.
+ *
+ * Deliberately NOT touched:
+ * - A published public snapshot (pk=PUBLIC). It is an independent copy with its
+ *   own image under public-characters/, so it stays available.
+ * - Conversation trees, thread counters and message-image descriptions. Those are
+ *   keyed by Discord message and shared by every character in a reply chain.
+ *
+ * The character item itself is deleted last, so a partial failure leaves the
+ * character visible and the delete can simply be retried.
+ */
+export async function deleteCharacter(
+  ownerId: string,
+  slug: string,
+): Promise<{ guilds: GuildAfterCharacterDelete[] }> {
+  const char = await getCharacter(ownerId, slug);
+  if (!char) throw new Error("Character not found");
+
+  // Remove it from any server where it is currently active.
+  const guilds: GuildAfterCharacterDelete[] = [];
+  for (const guildId of await listLinkedGuilds(ownerId)) {
+    const active = await getGuildActiveCharacters(guildId);
+    const remaining = active.filter((c) => !(c.ownerDiscordId === ownerId && c.slug === slug));
+    if (remaining.length === active.length) continue;
+    await setActiveGuildCharacters(guildId, remaining, ownerId);
+    guilds.push({ guildId, remainingNames: remaining.map((c) => c.displayName) });
   }
+
+  // Clear the DM character if it is this one (the bot falls back to dmCharacterName).
+  const owner = await getItem("USERS", userSk(ownerId));
+  const dmSlug = owner?.dmCharacterSlug || owner?.dmCharacterName;
+  if (dmSlug === slug) {
+    await updateItem("USERS", userSk(ownerId), "REMOVE dmCharacterSlug, dmCharacterName");
+  }
+
+  // Images: the trailing "/" keeps e.g. "bob" from matching "bobby".
+  await deleteImagePrefix(characterImagePrefix(ownerId, slug));
+
+  // Sub-items: the trailing "#" keeps e.g. "bob" from matching "bobby".
+  const subItems = await queryPkSkAll("USERS", `${charSk(ownerId, slug)}#`);
+  await batchDeleteItems(subItems.map((i) => ({ pk: "USERS", sk: String(i.sk) })));
+
   await deleteItem("USERS", charSk(ownerId, slug));
+  return { guilds };
 }
 
 export async function upsertKnownUser(

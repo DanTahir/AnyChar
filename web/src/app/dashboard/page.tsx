@@ -7,6 +7,7 @@ import { defaultTextModel } from "@/lib/models";
 import { getAppUser, listCharacters } from "@/lib/users";
 
 import BitcoinDeposit from "./bitcoin-deposit";
+import DeleteCharacterButton from "./delete-character-button";
 import ModelSelector from "./model-selector";
 
 export default async function DashboardPage() {
@@ -110,9 +111,16 @@ export default async function DashboardPage() {
                     </span>
                   )}
                 </span>
-                <Link href={`/dashboard/characters/${c.slug}`} className="link-accent text-sm">
-                  Edit
-                </Link>
+                <span className="flex items-center gap-4">
+                  <Link href={`/dashboard/characters/${c.slug}`} className="link-accent text-sm">
+                    Edit
+                  </Link>
+                  <DeleteCharacterButton
+                    slug={c.slug as string}
+                    displayName={c.displayName as string}
+                    isPublic={Boolean(c.publicId)}
+                  />
+                </span>
               </li>
             ))}
           </ul>

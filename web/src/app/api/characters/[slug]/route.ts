@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
-import { fetchDiscordDisplayNames } from "@/lib/discord-bot";
+import {
+  buildCombinedNickname,
+  fetchDiscordDisplayNames,
+  syncBotGuildNickname,
+} from "@/lib/discord-bot";
 import { unpublishCharacter } from "@/lib/public-characters";
 import { characterSchema, hatesOf, lovesOf } from "@/lib/schemas/character";
 import {
@@ -69,10 +73,18 @@ export async function DELETE(_req: Request, { params }: Params) {
     const session = await auth();
     const { session: s } = await requireApproved(session);
     const { slug } = await params;
-    await deleteCharacter(s.user.id, slug);
+    const { guilds } = await deleteCharacter(s.user.id, slug);
+    // Best effort: rename the bot in servers where this character was active.
+    // An empty nickname resets it to the bot's username.
+    await Promise.allSettled(
+      guilds.map((g) =>
+        syncBotGuildNickname(g.guildId, buildCombinedNickname(g.remainingNames)),
+      ),
+    );
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";
-    return NextResponse.json({ error: msg }, { status: 400 });
+    const status = msg === "Character not found" ? 404 : 400;
+    return NextResponse.json({ error: msg }, { status });
   }
 }

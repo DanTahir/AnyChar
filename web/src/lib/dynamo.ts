@@ -1,5 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
+  BatchWriteCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
@@ -48,6 +49,27 @@ export async function deleteItem(pk: string, sk: string) {
   await client.send(
     new DeleteCommand({ TableName: config.dynamoTable, Key: { pk, sk } }),
   );
+}
+
+/**
+ * Deletes many items via BatchWriteItem (25 per request), retrying any
+ * UnprocessedItems with backoff. Throws if items remain after the retries.
+ */
+export async function batchDeleteItems(keys: { pk: string; sk: string }[]) {
+  type DeleteRequest = { DeleteRequest: { Key: Record<string, unknown> } };
+  for (let i = 0; i < keys.length; i += 25) {
+    let requests: DeleteRequest[] = keys
+      .slice(i, i + 25)
+      .map((k) => ({ DeleteRequest: { Key: { pk: k.pk, sk: k.sk } } }));
+    for (let attempt = 0; requests.length > 0; attempt++) {
+      if (attempt >= 6) throw new Error("Failed to delete all items; please retry");
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 100 * 2 ** attempt));
+      const resp = await client.send(
+        new BatchWriteCommand({ RequestItems: { [config.dynamoTable]: requests } }),
+      );
+      requests = (resp.UnprocessedItems?.[config.dynamoTable] ?? []) as DeleteRequest[];
+    }
+  }
 }
 
 export async function queryPkSk(pk: string, skPrefix: string) {

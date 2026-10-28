@@ -1,6 +1,8 @@
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -60,6 +62,40 @@ export async function deleteImage(key: string) {
   );
 }
 
+/**
+ * Deletes every object under a "folder" prefix. The prefix must end with "/"
+ * so e.g. characters/{owner}/bob/ can never match characters/{owner}/bobby/.
+ */
+export async function deleteImagePrefix(prefix: string) {
+  if (!config.s3Bucket) return;
+  if (!prefix.endsWith("/") || prefix.length < 2) {
+    throw new Error("deleteImagePrefix requires a folder prefix ending in '/'");
+  }
+  let token: string | undefined;
+  do {
+    const list = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: config.s3Bucket,
+        Prefix: prefix,
+        ContinuationToken: token,
+      }),
+    );
+    const objects = (list.Contents ?? []).flatMap((o) => (o.Key ? [{ Key: o.Key }] : []));
+    if (objects.length > 0) {
+      const del = await s3.send(
+        new DeleteObjectsCommand({
+          Bucket: config.s3Bucket,
+          Delete: { Objects: objects, Quiet: true },
+        }),
+      );
+      if (del.Errors && del.Errors.length > 0) {
+        throw new Error(`Failed to delete ${del.Errors.length} image(s); please retry`);
+      }
+    }
+    token = list.IsTruncated ? list.NextContinuationToken : undefined;
+  } while (token);
+}
+
 export async function fetchImage(key: string) {
   if (!config.s3Bucket || !key) return null;
   const resp = await s3.send(
@@ -86,6 +122,11 @@ export async function copyImage(srcKey: string, destKey: string): Promise<string
 
 export function publicCharacterImageKey(publicId: string, ext: string) {
   return `public-characters/${publicId}/avatar.${ext}`;
+}
+
+/** Folder holding all of a character's images (portrait + known-user images). */
+export function characterImagePrefix(ownerId: string, slug: string) {
+  return `characters/${ownerId}/${slug}/`;
 }
 
 export function characterImageKey(ownerId: string, slug: string, ext: string) {
