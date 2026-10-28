@@ -2,9 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
+import { loadDashboardBitcoin } from "@/lib/btc/dashboard";
 import { defaultTextModel } from "@/lib/models";
 import { getAppUser, listCharacters } from "@/lib/users";
 
+import BitcoinDeposit from "./bitcoin-deposit";
 import ModelSelector from "./model-selector";
 
 export default async function DashboardPage() {
@@ -12,8 +14,11 @@ export default async function DashboardPage() {
   if (!session?.user) redirect("/");
   if (!session.user.approved) redirect("/pending");
 
-  const user = await getAppUser(session.user.id);
-  const characters = await listCharacters(session.user.id);
+  const [user, characters, bitcoin] = await Promise.all([
+    getAppUser(session.user.id),
+    listCharacters(session.user.id),
+    loadDashboardBitcoin(session.user.id),
+  ]);
 
   return (
     <div className="space-y-8">
@@ -48,6 +53,23 @@ export default async function DashboardPage() {
           </Link>
         </p>
       </section>
+
+      {bitcoin?.ok && (
+        <BitcoinDeposit
+          address={bitcoin.address}
+          qrSvg={bitcoin.qrSvg}
+          network={bitcoin.network}
+          explorerBase={bitcoin.explorerBase}
+          requiredConfirmations={bitcoin.requiredConfirmations}
+          initialDeposits={bitcoin.deposits}
+          btcUsdPrice={bitcoin.btcUsdPrice}
+        />
+      )}
+      {bitcoin && !bitcoin.ok && (
+        <section className="card p-5 text-sm text-purple-300/70">
+          Bitcoin deposits are temporarily unavailable. Please try again later.
+        </section>
+      )}
 
       <section className="space-y-4">
         <div className="flex items-center justify-between">

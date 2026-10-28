@@ -77,6 +77,7 @@ There are no webhooks: replies are normal bot messages, prefixed with `**Name**`
 - `lib/users.ts` holds domain logic plus the `requireSession` / `requireApproved` / `requireAdmin` guards. `lib/dynamo.ts` is a thin DocumentClient wrapper. Other helpers: `lib/s3.ts`, `lib/crypto.ts`, `lib/openrouter.ts`, `lib/discord-bot.ts` (Discord REST: nicknames, name lookup), `lib/memories.ts`, `lib/appearance.ts`.
 - Validation uses zod (`lib/schemas/character.ts`, `lib/schemas/memory.ts`). Known users: max 5 per character, and 500 characters each when there's more than one.
 - Pages are under `app/`: landing, `about`, `pending`, `admin`, and `dashboard/{characters,servers,dm,settings}`. API routes are under `app/api/`.
+- `lib/btc/`: Bitcoin deposits (see Behaviour notes). `config` (env), `wallet` (xpub → P2WPKH via `@scure/bip32`/`@scure/btc-signer`), `esplora` (mempool.space client), `price` (Coinbase → CoinGecko spot), `store` (DynamoDB records + crediting), `watcher` (poll loop), `scan` (central-wallet balance/UTXOs), `psbt` (unsigned withdrawals + broadcast), `dashboard` (deposit-card loader). `src/instrumentation.ts` starts the watcher in the Node runtime. Routes: `api/btc/{deposits,check}`, `api/admin/btc/{summary,psbt,broadcast}`. UI: `dashboard/bitcoin-deposit.tsx`, `admin/bitcoin-admin.tsx`.
 - Styling is Tailwind v4 with CSS-variable theming in `app/globals.css` and no component library.
 - `lib/prompt-builder.ts` mirrors bot prompt constants, but nothing imports it right now.
 
@@ -92,6 +93,9 @@ There are no webhooks: replies are normal bot messages, prefixed with `**Name**`
 | `USERS` | `SESSION#…`, `USERID#…#ACCOUNT#…` | Auth.js records |
 | `GUILDS` | `GUILDID#{guildId}` | Guild config: `activeCharacters` list (legacy single-character fields still written/read as fallback) |
 | `GUILDS` | `{guildKey}#THREAD#{rootId}` / `{guildKey}#MSGIMG#{msgId}` | Thread counter / image-description index |
+| `BTC` | `COUNTER#{xpubId}#receive` | Atomic next-receive-index counter |
+| `BTC` | `USERADDR#{xpubId}#{userId}` | User's deposit address + derivation index, `watchUntil` (watcher priority) |
+| `BTC` | `DEP#{xpubId}#{txid}:{vout}` | Deposit (`pending → crediting → credited`, or `dropped`), frozen `btcUsdPrice`/`usdCredited`. GSI1 `BTCDEP#{xpubId}#{userId}` / `detectedAt` |
 
 - **Character SK gotcha:** both the bot and the web list characters with `begins_with` and keep only items whose slug part contains no `#`. Any new sub-item under a character must have a further `#` so it isn't mistaken for a character.
 - **S3 layout:**
@@ -99,6 +103,7 @@ There are no webhooks: replies are normal bot messages, prefixed with `**Name**`
   - `characters/{owner}/{slug}/known/{id}.*`
   - `conversations/{guilds/{gid}|dms/{uid}}/{rootId}.json`
 - **IAM:** the EC2 role (`infra/iam-ec2-policy.json`) can Get/Put/Update/Delete/Query but **not Scan**.
+- `xpubId` is a short hash of `BTC_XPUB`, so changing the xpub orphans existing addresses. User items gain `btcDepositedUsd` and the string set `btcCreditedOutpoints` (exactly-once guard). The bot ignores both.
 
 ## Invariants: keep bot and web in sync
 
@@ -123,13 +128,19 @@ These are duplicated across languages. When you change one side, change the othe
 - **Model resolution** (`_resolve_model`): explicit model → vision model → user's `preferredTextModel` → `OPENROUTER_DEFAULT_ADULT_TEXT_MODEL` (Mistral Large, if `age18plus`) → `OPENROUTER_DEFAULT_TEXT_MODEL` (Claude Sonnet 5.5). Web mirrors this via `defaultTextModel()` in `web/src/lib/models.ts`.
 - **Prompt caching:** explicit `cache_control` markers are only added for `_EXPLICIT_CACHE_PREFIXES` / `_EXPLICIT_CACHE_EXACT` (anthropic/, qwen/, deepseek-v3.2). Other model families cache implicitly. Review this list when the model lineup changes.
 - **Billing:** OpenRouter's `usage.cost` × 2 goes into `usageCostUsd`; catalog pricing is the fallback. The default budget is $10, and admins raise it through `/api/admin/raise-budget`.
+- **Bitcoin deposits** (web only, off unless `BTC_XPUB` is set):
+  - Watch-only custody: the server holds the central wallet's account xpub, never private keys. Each approved user gets a permanent receive address (`/0/{n}`, n from the atomic counter) shown with a QR on `/dashboard`, so deposits land directly in the admin's wallet.
+  - The watcher (`instrumentation.ts`, every `BTC_POLL_INTERVAL_SECONDS`) checks addresses via mempool.space: "hot" ones (dashboard open / Check button) every cycle, unsettled ones always, the rest on a slow rotation. **Single-process assumption** like the bot's conversation cache; idempotent crediting makes a duplicate harmless, but don't run two web instances with the watcher on.
+  - At `BTC_CONFIRMATIONS` (3), the deposit is credited at spot price (floored to cents) to `budgetUsd`: `pending → crediting` (price frozen) → user update guarded by `NOT contains(btcCreditedOutpoints, :op)` → `credited`. A stuck `crediting` item is safely retried. No price = no credit (retried next cycle).
+  - Admin page: balance (all receive + change addresses), deposits, fee presets, "create unsigned transaction" (PSBT with BIP32 derivations from `BTC_MASTER_FINGERPRINT`/`BTC_ACCOUNT_PATH`; change → `/1/{j}`), and broadcast of a signed PSBT/raw tx. Use a dedicated wallet for deposits and raise its gap limit in Sparrow/Electrum.
+  - Test offline with `cd web && npx tsx scripts/smoke-btc.ts` (BIP84 vectors + PSBT sign/finalize).
 - **Memory compaction:** token estimate is chars/4. When a tier exceeds `st_max`/`lt_max` (5k/10k/20k for short/medium/long), the oldest items are LLM-summarised down to the keep size. Near-duplicate summaries are skipped.
 
 ## Config & secrets
 
 - **Bot env** (`bot/.env`): `TOKEN`, `AWS_REGION`, `DYNAMODB_TABLE`, `S3_BUCKET`, `ENCRYPTION_SECRET`, `OPENROUTER_VISION_MODEL`, `OPENROUTER_DEFAULT_TEXT_MODEL`, `SITE_URL`, `BUDGET_EXCEEDED_MESSAGE`, `CONVERSATION_TTL_SECONDS`, `CONVERSATION_CLEANUP_INTERVAL_SECONDS`.
   - `bot/.env.example` is stale: it lists `OPENROUTER_TEXT_MODEL` / `OPENROUTER_MEMORY_MODEL`, which nothing reads, and is missing `OPENROUTER_DEFAULT_TEXT_MODEL`.
-- **Web env** (`web/.env`): `AUTH_SECRET`, `AUTH_URL`, `AUTH_DISCORD_ID` (or `NEXT_PUBLIC_DISCORD_CLIENT_ID`), `AUTH_DISCORD_SECRET`, `DISCORD_BOT_TOKEN`, `AWS_REGION`, `DYNAMODB_TABLE`, `S3_BUCKET`, `ENCRYPTION_SECRET`, `OPENROUTER_MANAGEMENT_KEY`, optional `OPENROUTER_VISION_MODEL`.
+- **Web env** (`web/.env`): `AUTH_SECRET`, `AUTH_URL`, `AUTH_DISCORD_ID` (or `NEXT_PUBLIC_DISCORD_CLIENT_ID`), `AUTH_DISCORD_SECRET`, `DISCORD_BOT_TOKEN`, `AWS_REGION`, `DYNAMODB_TABLE`, `S3_BUCKET`, `ENCRYPTION_SECRET`, `OPENROUTER_MANAGEMENT_KEY`, optional `OPENROUTER_VISION_MODEL`. Optional Bitcoin: `BTC_NETWORK` (default testnet), `BTC_XPUB`, `BTC_MASTER_FINGERPRINT`, `BTC_ACCOUNT_PATH`, `BTC_CONFIRMATIONS`, `BTC_POLL_INTERVAL_SECONDS`, `BTC_WATCHER_ENABLED`, `BTC_EXPLORER_URL`, `BTC_ESPLORA_API_URL` (documented in `web/.env.example`). Local dev hits the production table, so keep `BTC_XPUB` empty or `BTC_WATCHER_ENABLED=false` locally.
 - Per-user OpenRouter keys are stored encrypted in DynamoDB. There is no local OpenRouter key, so live LLM calls can't easily be tested locally.
 - **Never commit:**
   - `.env` files
