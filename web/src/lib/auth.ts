@@ -5,6 +5,36 @@ import { AnyCharAdapter } from "./auth-adapter";
 import { config } from "./config";
 import { getItem, updateItem, userSk } from "./dynamo";
 
+type DiscordProfile = {
+  id?: string;
+  username?: string;
+  global_name?: string | null;
+  avatar?: string | null;
+  discriminator?: string;
+  email?: string | null;
+};
+
+/** Same mapping as the Discord provider's `profile()`, applied to the raw profile. */
+function discordProfileFields(profile: DiscordProfile | undefined) {
+  if (!profile?.id) return { name: undefined, email: undefined, image: undefined };
+  let image: string;
+  if (profile.avatar) {
+    const format = profile.avatar.startsWith("a_") ? "gif" : "png";
+    image = `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.${format}`;
+  } else {
+    const n =
+      !profile.discriminator || profile.discriminator === "0"
+        ? Number(BigInt(profile.id) >> BigInt(22)) % 6
+        : parseInt(profile.discriminator, 10) % 5;
+    image = `https://cdn.discordapp.com/embed/avatars/${n}.png`;
+  }
+  return {
+    name: profile.global_name || profile.username || undefined,
+    email: profile.email || undefined,
+    image,
+  };
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: AnyCharAdapter(),
   secret: config.authSecret,
@@ -59,11 +89,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         ":gsi1pk": existing?.approved ? "APPROVAL#approved" : "APPROVAL#pending",
         ":gsi1sk": userSk(discordId),
       };
-      // Only refresh profile fields Discord actually returned this time.
+      // For a returning user Auth.js passes the *stored* user record here, not
+      // the fresh one from Discord, so read name/avatar/email from the raw
+      // Discord profile to pick up changes. Only refresh fields Discord
+      // actually returned this time.
+      const fresh = discordProfileFields(profile as DiscordProfile | undefined);
       const profileFields: Record<string, unknown> = {
-        name: user.name ?? (profile as { username?: string })?.username,
-        email: user.email,
-        image: user.image,
+        name: fresh.name ?? user.name,
+        email: fresh.email ?? user.email,
+        image: fresh.image ?? user.image,
       };
       for (const [field, value] of Object.entries(profileFields)) {
         if (value === undefined || value === null) continue;
